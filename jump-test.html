@@ -25,25 +25,28 @@
     height: 100dvh; overflow: hidden;
     -webkit-user-select: none; user-select: none;
   }
+  body.nograph { grid-template-rows: auto auto 1fr; }
+  body.nograph .graph { display: none; }
+  body.nograph .panel { grid-template-columns: 1fr; }
   header {
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
     padding: 6px 10px; background: var(--yellow); border-bottom: 3px solid var(--ink);
   }
-  header h1 { font-size: 18px; margin: 0 8px 0 0; font-weight: 400; }
+  header h1 { font-size: 18px; margin: 0 6px 0 0; font-weight: 400; }
   button, select {
     font-family: inherit; font-size: 14px; color: var(--ink);
     background: var(--cream); border: 2px solid var(--ink); border-radius: 8px;
-    padding: 4px 10px; box-shadow: 0 3px 0 var(--ink); cursor: pointer;
+    padding: 4px 8px; box-shadow: 0 3px 0 var(--ink); cursor: pointer;
   }
   button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
   button.primary { background: #6cc24a; color: #fff; text-shadow: 0 1px 0 var(--ink); }
-  label.chk { display: flex; align-items: center; gap: 4px; font-size: 14px; }
-  #status { margin-left: auto; font-size: 14px; background: var(--ink); color: var(--yellow); padding: 3px 10px; border-radius: 99px; }
+  label.chk { display: flex; align-items: center; gap: 3px; font-size: 14px; }
+  #status { margin-left: auto; font-size: 13px; background: var(--ink); color: var(--yellow); padding: 3px 10px; border-radius: 99px; }
 
   #panels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; min-height: 0; }
   .panel {
     background: var(--panel); border: 3px solid var(--ink); border-radius: 12px;
-    display: grid; grid-template-columns: minmax(150px, 36%) 1fr; gap: 6px; padding: 6px; min-height: 0;
+    display: grid; grid-template-columns: minmax(160px, 36%) 1fr; gap: 6px; padding: 6px; min-height: 0;
     position: relative; overflow: hidden;
   }
   .panel.red { border-color: var(--red); box-shadow: inset 0 0 0 2px var(--red); }
@@ -54,10 +57,12 @@
   .red .tag { background: var(--red); } .blue .tag { background: var(--blue); }
   .seen { font-size: 12px; color: var(--muted); }
   .seen.on { color: #2f9e44; }
+  .mode { font-size: 12px; padding: 0 8px; border-radius: 99px; background: #eee3cc; }
+  .mode.alt { background: #e3d4ff; }
   .count { font-size: 44px; line-height: 1; }
   .count small { font-size: 16px; color: var(--muted); }
   .stat { font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .stat b { color: var(--ink); font-weight: 400; font-size: 16px; }
+  .stat b { color: var(--ink); font-weight: 400; font-size: 15px; }
   .ctrl { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: auto; flex-wrap: wrap; }
   .ctrl select, .ctrl button { font-size: 12px; padding: 2px 6px; box-shadow: 0 2px 0 var(--ink); }
   .ctrl input[type=range] { width: 70px; }
@@ -91,18 +96,25 @@
 </head>
 <body>
 <header>
-  <h1>🔧 줄넘기 인식 테스트</h1>
+  <h1>🔧 인식 테스트</h1>
   <button id="btnStart" class="primary">📷 카메라 시작</button>
   <select id="selCam" title="카메라"><option value="">카메라 선택</option></select>
   <select id="selRes" title="해상도">
-    <option value="640x480" selected>640×480 (권장)</option>
+    <option value="640x480" selected>640×480</option>
+    <option value="480x360">480×360 (가벼움)</option>
     <option value="1280x720">1280×720</option>
   </select>
-  <select id="selModel" title="인식 모델">
+  <select id="selEngine" title="인식 엔진">
+    <option value="mp2" selected>엔진A: MediaPipe 2명</option>
+    <option value="mpsplit">엔진B: MediaPipe 분할</option>
+    <option value="movenet">엔진C: MoveNet</option>
+  </select>
+  <select id="selModel" title="인식 모델 (엔진 A·B)">
     <option value="lite" selected>모델: 가벼움</option>
     <option value="full">모델: 정확함</option>
   </select>
   <label class="chk"><input type="checkbox" id="chkMirror" checked>거울</label>
+  <label class="chk"><input type="checkbox" id="chkGraph" checked>그래프</label>
   <button id="btnTest">⏱ 30초 측정</button>
   <button id="btnFull">⛶</button>
   <span id="status">대기 중</span>
@@ -122,6 +134,7 @@
       <div class="col r"><div>빨강</div><div class="n" id="resR">0</div><div id="resR2"></div></div>
       <div class="col b"><div>파랑</div><div class="n" id="resB">0</div><div id="resB2"></div></div>
     </div>
+    <p id="resInfo"></p>
     <p>직접 센 횟수와 비교해 보세요.<br>너무 적게 세면 감도를 올리고, 너무 많이 세면 내리세요.</p>
     <button id="btnClose">닫기</button>
   </div></div>
@@ -137,7 +150,13 @@ const MODELS = {
   lite: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
   full: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
 };
+const TF_SCRIPTS = [
+  'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+  'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js',
+];
+const ENGINE_NAMES = { mp2: 'A', mpsplit: 'B', movenet: 'C' };
 const GRADE_SENS = { '12': 8, '34': 6, '56': 5 };
+// 몸 전체 오르내림(모아뛰기)에 쓰는 부위
 const POINTS = [
   { key: 'nose', idx: [0], w: 1 },
   { key: 'sh', idx: [11, 12], w: 1.5 },
@@ -150,22 +169,66 @@ const $ = s => document.querySelector(s);
 const video = $('#video'), view = $('#view'), vctx = view.getContext('2d');
 const statusEl = $('#status'), msgEl = $('#msg');
 
-// ───────────────────────── 점프 감지기 ─────────────────────────
+// ───────────────────────── 신호 채널 ─────────────────────────
+// bob : 몸 전체 오르내림 → 착지할 때 1회 (모아뛰기)
+// alt : 왼발-오른발 높이 차이 → 좌우가 바뀔 때마다 1회 (번갈아뛰기)
+class Channel {
+  constructor(kind) { this.kind = kind; this.twoSided = kind === 'alt'; this.reset(); }
+  reset() { this.buf = []; this.base = null; this.sm = null; this.state = 0; this.upT = 0; this.amp = 0; this.active = false; this.ac = { rate: 0, conf: 0 }; this.lastEvt = -99; this.lastT = -99; }
+  feed(t, v, dt, minAmp, detrend) {
+    if (t - this.lastT > 0.5) { this.base = null; this.sm = null; this.state = 0; }
+    this.lastT = t;
+    let s = v;
+    if (detrend) {
+      if (this.base == null) this.base = v;
+      this.base += (1 - Math.exp(-dt / 0.8)) * (v - this.base);
+      s = v - this.base;
+    }
+    this.sm = this.sm == null ? s : this.sm + 0.75 * (s - this.sm);
+    let mx = this.sm, mn = this.sm;
+    for (let i = this.buf.length - 1; i >= 0 && this.buf[i].t > t - 1.5; i--) {
+      if (this.buf[i].s > mx) mx = this.buf[i].s; if (this.buf[i].s < mn) mn = this.buf[i].s;
+    }
+    const amp = mx - mn, md = (mx + mn) / 2;
+    const hi = md + amp * 0.2, lo = md - amp * 0.2;
+    const active = amp >= minAmp;
+    this.amp = amp; this.active = active;
+    let evt = false;
+    if (!this.twoSided) {
+      if (this.state !== 1) { if (active && this.sm > hi) { this.state = 1; this.upT = t; } }
+      else if (this.sm < lo) { this.state = -1; evt = active; }
+      else if (t - this.upT > 1.2) this.state = -1;
+    } else if (active) {
+      if (this.sm > hi && this.state !== 1) { evt = this.state === -1; this.state = 1; }
+      else if (this.sm < lo && this.state !== -1) { evt = this.state === 1; this.state = -1; }
+    }
+    if (evt) { if (t - this.lastEvt < 0.12) evt = false; else this.lastEvt = t; }
+    this.buf.push({ t, s: this.sm, hi, lo, active });
+    while (this.buf.length && this.buf[0].t < t - 5) this.buf.shift();
+    this.ac = autocorrRate(this.buf, t);
+    return evt;
+  }
+  stepRate() { return this.ac.rate * (this.twoSided ? 2 : 1); }
+}
+
+// ───────────────────────── 플레이어 ─────────────────────────
 class Player {
   constructor(id, name, color) {
     this.id = id; this.name = name; this.color = color; this.sens = 6;
-    this.motion = [];
+    this.motion = []; this.bob = new Channel('bob'); this.alt = new Channel('alt');
     this.reset();
   }
   reset() {
-    this.buf = []; this.count = 0; this.state = 'down'; this.upT = 0; this.lastJumpT = -99;
-    this.jumpTimes = []; this.bases = {}; this.scale = null; this.sm = null; this.lastT = null;
+    this.bob.reset(); this.alt.reset();
+    this.count = 0; this.jumpTimes = []; this.events = []; this.lastJumpT = -99; this.primary = 'bob';
+    this.bases = {}; this.scale = null; this.lastT = null;
     this.present = false; this.lastSeen = -99; this.lms = null;
-    this.amp = 0; this.rateAC = 0; this.confAC = 0; this.rateIv = 0; this.rate = 0; this.peak = 0; this.flash = 0;
+    this.rate = 0; this.peak = 0; this.flash = 0;
   }
-  resetCount() { this.count = 0; this.jumpTimes = []; this.peak = 0; this.lastJumpT = -99; }
-  clearTracking() { this.bases = {}; this.sm = null; this.scale = null; this.state = 'down'; this.lastT = null; this.lms = null; }
-  get minAmp() { return 0.0872 - this.sens * 0.0072; } // 몸통 길이 대비 최소 진폭 (감도 1=0.08, 6=0.044, 10=0.015)
+  resetCount() { this.count = 0; this.jumpTimes = []; this.events = []; this.peak = 0; this.lastJumpT = -99; }
+  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); }
+  get minAmp() { return 0.0872 - this.sens * 0.0072; } // 몸통 길이 대비 (감도 1=0.08, 6=0.044, 10=0.015)
+  get minAmpAlt() { return this.minAmp * 1.6; }
 
   miss(t) {
     if (this.present && t - this.lastSeen > 0.5) { this.present = false; this.clearTracking(); }
@@ -181,8 +244,9 @@ class Player {
     this.scale = this.scale == null ? torso : this.scale * 0.92 + torso * 0.08;
     const dt = this.lastT == null ? 0.033 : Math.min(0.2, t - this.lastT);
     this.lastT = t;
-    const a = 1 - Math.exp(-dt / 0.8); // 기준선 시정수 0.8초
+    const a = 1 - Math.exp(-dt / 0.8);
 
+    // 1) 몸 전체 오르내림 (부위별 기준선을 따로 두어 부위가 잠깐 사라져도 튀지 않게)
     let sum = 0, wsum = 0;
     for (const pt of POINTS) {
       const ps = pt.idx.map(i => lms[i]);
@@ -193,55 +257,41 @@ class Player {
       b.v += a * (y - b.v); b.t = t;
       sum += pt.w * (-(y - b.v) / this.scale); wsum += pt.w;
     }
-    if (!wsum) return;
-    const s = sum / wsum;
-    this.sm = this.sm == null ? s : this.sm + 0.75 * (s - this.sm);
+    const evB = wsum ? this.bob.feed(t, sum / wsum, dt, this.minAmp, false) : false;
 
-    // 최근 1.5초 진폭 → 적응형 임계값
-    let mx = -Infinity, mn = Infinity;
-    for (let i = this.buf.length - 1; i >= 0 && this.buf[i].t > t - 1.5; i--) {
-      mx = Math.max(mx, this.buf[i].s); mn = Math.min(mn, this.buf[i].s);
-    }
-    mx = Math.max(mx, this.sm); mn = Math.min(mn, this.sm);
-    const amp = mx - mn, md = (mx + mn) / 2;
-    const hi = md + amp * 0.2, lo = md - amp * 0.2;
-    const active = amp >= this.minAmp;
-    this.amp = amp;
-
-    let jump = false;
-    if (this.state === 'down') {
-      if (active && this.sm > hi) { this.state = 'up'; this.upT = t; }
-    } else {
-      if (this.sm < lo) {
-        this.state = 'down';
-        if (active && t - this.lastJumpT > 0.15) {
-          jump = true; this.count++; this.lastJumpT = t; this.flash = 1;
-          this.jumpTimes.push(t); if (this.jumpTimes.length > 8) this.jumpTimes.shift();
-        }
-      } else if (t - this.upT > 1.2) this.state = 'down';
+    // 2) 왼발-오른발 높이 차이 (발목 + 무릎)
+    let evA = false;
+    if ([25, 26, 27, 28].every(i => ok(lms[i]))) {
+      const d = ((lms[27].y - lms[28].y) + (lms[25].y - lms[26].y)) / 2 * vh / this.scale;
+      evA = this.alt.feed(t, d, dt, this.minAmpAlt, true);
     }
 
-    this.buf.push({ t, s: this.sm, hi, lo, active, jump });
-    while (this.buf.length && this.buf[0].t < t - 5) this.buf.shift();
+    // 3) 더 뚜렷한 쪽을 주 신호로 (자주 바뀌지 않게 1.3배 차이 필요)
+    const sb = this.bob.active ? this.bob.amp / this.minAmp : 0;
+    const sa = this.alt.active && t - this.alt.lastT < 0.3 ? this.alt.amp / this.minAmpAlt : 0;
+    if (this.primary === 'bob' && sa >= 1 && sa > sb * 1.3) this.primary = 'alt';
+    else if (this.primary === 'alt' && (sb >= 1 && sb > sa * 1.3 || sa === 0)) this.primary = 'bob';
+
+    const evt = this.primary === 'bob' ? evB : evA;
+    if (evt && t - this.lastJumpT > 0.12) {
+      this.count++; this.lastJumpT = t; this.flash = 1;
+      this.jumpTimes.push(t); if (this.jumpTimes.length > 8) this.jumpTimes.shift();
+      this.events.push(t); while (this.events.length && this.events[0] < t - 5) this.events.shift();
+    }
     this.updateRate(t);
   }
 
+  get channel() { return this.primary === 'alt' ? this.alt : this.bob; }
+
   updateRate(t) {
-    // 1) 점프 간격 중앙값
     const jt = this.jumpTimes, ivs = [];
     for (let i = 1; i < jt.length; i++) ivs.push(jt[i] - jt[i - 1]);
     const med = ivs.length ? ivs.slice().sort((a, b) => a - b)[ivs.length >> 1] : 0;
     const since = t - this.lastJumpT;
     this.rateIv = (med && since < Math.max(1.2, med * 2)) ? 1 / med : 0;
-
-    // 2) 리듬 분석(자기상관)
-    const ac = autocorrRate(this.buf, t);
-    this.rateAC = ac.rate; this.confAC = ac.conf;
-
+    const ch = this.channel;
     let target = 0;
-    if (this.present && since < 1.5 && this.amp >= this.minAmp) {
-      target = (ac.conf > 0.35 && ac.rate > 0) ? ac.rate : this.rateIv;
-    }
+    if (this.present && since < 1.5 && ch.active) target = (ch.ac.conf > 0.35 && ch.ac.rate > 0) ? ch.stepRate() : this.rateIv;
     this.rate += (target - this.rate) * (target > this.rate ? 0.2 : 0.06);
     if (this.rate < 0.05) this.rate = 0;
     this.peak = Math.max(this.peak, this.rate * 60);
@@ -254,7 +304,7 @@ function autocorrRate(buf, t) {
   const fs = 30, T = 2.5, t0 = t - T;
   let k = 0; while (k < buf.length && buf[k].t < t0) k++;
   const pts = buf.slice(Math.max(0, k - 1));
-  if (pts.length < 20 || pts[0].t > t0 + 0.3) return { rate: 0, conf: 0 };
+  if (pts.length < 15 || pts[0].t > t0 + 0.3) return { rate: 0, conf: 0 };
   const n = Math.floor(T * fs), x = new Float32Array(n);
   let j = 0, mean = 0;
   for (let i = 0; i < n; i++) {
@@ -265,7 +315,7 @@ function autocorrRate(buf, t) {
     x[i] = p.s + (q.s - p.s) * u; mean += x[i];
   }
   mean /= n; for (let i = 0; i < n; i++) x[i] -= mean;
-  const minL = 4, maxL = 33, r = new Float32Array(maxL + 2);
+  const minL = 4, maxL = 40, r = new Float32Array(maxL + 2);
   let best = 0;
   for (let L = minL; L <= maxL + 1; L++) {
     let s = 0, a = 0, b = 0;
@@ -292,10 +342,10 @@ players.forEach((p, i) => {
   el.className = 'panel ' + (i ? 'blue' : 'red');
   el.innerHTML = `
     <div class="info">
-      <div class="tagrow"><span class="tag">${p.name}</span><span class="seen">● 인식 안 됨</span></div>
+      <div class="tagrow"><span class="tag">${p.name}</span><span class="seen">● 인식 안 됨</span><span class="mode">모아뛰기</span></div>
       <div class="count"><span class="cnt">0</span><small> 회</small></div>
       <div class="stat">속도 <b class="jpm">0</b> 회/분 · 최고 <b class="pk">0</b></div>
-      <div class="stat">진폭 <b class="amp">0.00</b> / 기준 <b class="min">0.00</b></div>
+      <div class="stat">몸 <b class="ampB">0.00</b>/<b class="minB">0.00</b> · 발 <b class="ampA">0.00</b>/<b class="minA">0.00</b></div>
       <div class="ctrl">
         <select class="grade"><option value="12">1~2학년</option><option value="34" selected>3~4학년</option><option value="56">5~6학년</option></select>
         감도 <input type="range" class="sens" min="1" max="10" step="1" value="6"><span class="sv">6</span>
@@ -304,41 +354,118 @@ players.forEach((p, i) => {
     </div>
     <canvas class="graph"></canvas>`;
   panels.appendChild(el);
+  const q = s => el.querySelector(s);
   p.el = {
-    root: el, seen: el.querySelector('.seen'), cnt: el.querySelector('.cnt'), jpm: el.querySelector('.jpm'),
-    pk: el.querySelector('.pk'), amp: el.querySelector('.amp'), min: el.querySelector('.min'),
-    sens: el.querySelector('.sens'), sv: el.querySelector('.sv'), graph: el.querySelector('.graph'),
+    seen: q('.seen'), mode: q('.mode'), cnt: q('.cnt'), jpm: q('.jpm'), pk: q('.pk'),
+    ampB: q('.ampB'), minB: q('.minB'), ampA: q('.ampA'), minA: q('.minA'),
+    sens: q('.sens'), sv: q('.sv'), graph: q('.graph'),
   };
   const setSens = v => { p.sens = +v; p.el.sens.value = v; p.el.sv.textContent = v; };
   p.el.sens.oninput = e => setSens(e.target.value);
-  el.querySelector('.grade').onchange = e => setSens(GRADE_SENS[e.target.value]);
-  el.querySelector('.rst').onclick = () => p.resetCount();
+  q('.grade').onchange = e => setSens(GRADE_SENS[e.target.value]);
+  q('.rst').onclick = () => p.resetCount();
 });
 
-// ───────────────────────── 카메라 / 모델 ─────────────────────────
-let stream = null, landmarker = null, loadingModel = false, running = false, lastVideoTime = -1;
+// ───────────────────────── 인식 엔진 ─────────────────────────
+let engine = null, engineKind = null, loading = false;
+let stream = null, running = false, lastVideoTime = -1, busy = false, inferMs = 0;
 let facing = 'user', wakeLock = null;
 
-async function loadModel(kind) {
-  loadingModel = true; statusEl.textContent = 'AI 모델 불러오는 중…';
-  try {
-    const vision = await FilesetResolver.forVisionTasks(WASM);
-    const opts = delegate => ({
-      baseOptions: { modelAssetPath: MODELS[kind], delegate },
-      runningMode: 'VIDEO', numPoses: 2,
-      minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
-    });
-    let lm;
-    try { lm = await PoseLandmarker.createFromOptions(vision, opts('GPU')); }
-    catch (e) { console.warn('GPU 실패, CPU 사용', e); lm = await PoseLandmarker.createFromOptions(vision, opts('CPU')); }
-    if (landmarker) landmarker.close();
-    landmarker = lm; statusEl.textContent = '인식 준비 완료';
-  } catch (e) {
-    console.error(e); statusEl.textContent = '모델 로딩 실패 (인터넷 확인)';
-  }
-  loadingModel = false;
+async function makeMP(model, numPoses) {
+  const vision = await FilesetResolver.forVisionTasks(WASM);
+  const opts = delegate => ({
+    baseOptions: { modelAssetPath: MODELS[model], delegate },
+    runningMode: 'VIDEO', numPoses,
+    minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+  });
+  try { return { lm: await PoseLandmarker.createFromOptions(vision, opts('GPU')), delegate: 'GPU' }; }
+  catch (e) { console.warn('GPU 실패, CPU 사용', e); return { lm: await PoseLandmarker.createFromOptions(vision, opts('CPU')), delegate: 'CPU' }; }
 }
 
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if ([...document.scripts].some(s => s.src === src)) return res();
+    const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error(src)); document.head.appendChild(s);
+  });
+}
+
+// MoveNet 17점 → MediaPipe 33점 번호로 변환
+const MN_MAP = { 0: 0, 5: 11, 6: 12, 7: 13, 8: 14, 9: 15, 10: 16, 11: 23, 12: 24, 13: 25, 14: 26, 15: 27, 16: 28 };
+function fromMoveNet(kps, vw, vh) {
+  const out = Array.from({ length: 33 }, () => ({ x: 0, y: 2, visibility: 0.01 }));
+  kps.forEach((k, i) => { if (MN_MAP[i] !== undefined) out[MN_MAP[i]] = { x: k.x / vw, y: k.y / vh, visibility: Math.max(0.01, k.score ?? 0) }; });
+  return out;
+}
+
+const ENGINES = {
+  async mp2(model) {
+    const { lm, delegate } = await makeMP(model, 2);
+    return {
+      delegate,
+      detect(now) { return (lm.detectForVideo(video, now).landmarks || []).map(l => ({ lms: l })); },
+      close() { lm.close(); },
+    };
+  },
+  async mpsplit(model) {
+    const a = await makeMP(model, 1), b = await makeMP(model, 1);
+    const lms = [a.lm, b.lm];
+    const cvs = [0, 1].map(() => document.createElement('canvas'));
+    return {
+      delegate: a.delegate,
+      detect(now) {
+        const vw = video.videoWidth, vh = video.videoHeight, hw = Math.floor(vw / 2), mirror = $('#chkMirror').checked;
+        const out = [];
+        for (let i = 0; i < 2; i++) {
+          const half = mirror ? 1 - i : i, cv = cvs[i];
+          if (cv.width !== hw || cv.height !== vh) { cv.width = hw; cv.height = vh; }
+          cv.getContext('2d').drawImage(video, half * hw, 0, hw, vh, 0, 0, hw, vh);
+          const r = lms[i].detectForVideo(cv, now);
+          if (r.landmarks && r.landmarks[0]) {
+            out.push({ side: i, lms: r.landmarks[0].map(l => ({ x: (l.x * hw + half * hw) / vw, y: l.y, visibility: l.visibility })) });
+          }
+        }
+        return out;
+      },
+      close() { lms.forEach(l => l.close()); },
+    };
+  },
+  async movenet() {
+    for (const s of TF_SCRIPTS) await loadScript(s);
+    await tf.setBackend('webgl'); await tf.ready();
+    const det = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
+      modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+      enableSmoothing: false, enableTracking: false, minPoseScore: 0.2, multiPoseMaxDimension: 256,
+    });
+    return {
+      delegate: tf.getBackend().toUpperCase(),
+      async detect() {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const poses = await det.estimatePoses(video, { maxPoses: 4 });
+        return poses.map(p => ({ lms: fromMoveNet(p.keypoints, vw, vh) }));
+      },
+      close() { det.dispose(); },
+    };
+  },
+};
+
+async function loadEngine() {
+  const kind = $('#selEngine').value, model = $('#selModel').value;
+  if (loading) return;
+  loading = true; statusEl.textContent = `엔진${ENGINE_NAMES[kind]} 불러오는 중…`;
+  const old = engine; engine = null;
+  while (busy) await new Promise(r => setTimeout(r, 20));
+  try { old?.close(); } catch (e) {}
+  try {
+    engine = await ENGINES[kind](model); engineKind = kind;
+    players.forEach(p => { p.present = false; p.clearTracking(); });
+    statusEl.textContent = `엔진${ENGINE_NAMES[kind]} 준비 완료 (${engine.delegate})`;
+  } catch (e) {
+    console.error(e); statusEl.textContent = '엔진 불러오기 실패 (인터넷 확인)';
+  }
+  loading = false;
+}
+
+// ───────────────────────── 카메라 ─────────────────────────
 async function startCamera(deviceId) {
   if (!window.isSecureContext) {
     showMsg('⚠️ 카메라를 쓸 수 없어요', 'https:// 주소이거나 PC에서 파일로 직접 열어야 카메라가 켜집니다.');
@@ -361,7 +488,7 @@ async function startCamera(deviceId) {
   await fillCameras(st.deviceId);
   hideMsg(); running = true;
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {}
-  if (!landmarker && !loadingModel) loadModel($('#selModel').value);
+  if (!engine && !loading) loadEngine();
 }
 
 async function fillCameras(current) {
@@ -380,34 +507,13 @@ function hideMsg() { msgEl.style.display = 'none'; msgEl.innerHTML = ''; }
 $('#btnStart').onclick = () => startCamera($('#selCam').value || undefined);
 $('#selCam').onchange = e => startCamera(e.target.value);
 $('#selRes').onchange = () => stream && startCamera($('#selCam').value || undefined);
-$('#selModel').onchange = e => loadModel(e.target.value);
+$('#selEngine').onchange = () => running && loadEngine();
+$('#selModel').onchange = () => running && loadEngine();
+$('#chkGraph').onchange = e => document.body.classList.toggle('nograph', !e.target.checked);
 $('#btnFull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && running) { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {} }
 });
-
-// ───────────────────────── 움직임 에너지(보조 신호) ─────────────────────────
-const mcv = document.createElement('canvas'); mcv.width = 64; mcv.height = 48;
-const mctx = mcv.getContext('2d', { willReadFrequently: true });
-let prevGray = null;
-function motionEnergy() {
-  const mirror = $('#chkMirror').checked;
-  mctx.save();
-  if (mirror) { mctx.translate(64, 0); mctx.scale(-1, 1); }
-  mctx.drawImage(video, 0, 0, 64, 48); mctx.restore();
-  const d = mctx.getImageData(0, 0, 64, 48).data;
-  const g = new Uint8Array(64 * 48);
-  for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
-  const out = [0, 0];
-  if (prevGray) {
-    for (let y = 2; y < 46; y++) for (let x = 0; x < 64; x++) {
-      const diff = Math.abs(g[y * 64 + x] - prevGray[y * 64 + x]);
-      if (diff > 18) out[x < 32 ? 0 : 1] += diff;
-    }
-  }
-  prevGray = g;
-  return out.map(v => v / (32 * 44 * 255));
-}
 
 // ───────────────────────── 30초 측정 ─────────────────────────
 let audioCtx = null;
@@ -426,7 +532,8 @@ function gunshot() {
   src.connect(lp).connect(g).connect(a.destination); src.start();
 }
 
-let test = null;
+let test = null, testFps = [];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 $('#btnTest').onclick = async () => {
   if (!running || test) return;
   ac().resume();
@@ -434,11 +541,10 @@ $('#btnTest').onclick = async () => {
   for (const n of [3, 2, 1]) {
     msgEl.style.display = 'flex'; msgEl.innerHTML = `<div class="big">${n}</div>`; beep(660); await sleep(1000);
   }
-  gunshot(); players.forEach(p => p.resetCount());
+  gunshot(); players.forEach(p => p.resetCount()); testFps = [];
   test = { phase: 'run', end: performance.now() / 1000 + 30 };
 };
 $('#btnClose').onclick = () => { $('#result').style.display = 'none'; };
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function updateTest(t) {
   if (!test || test.phase !== 'run') return;
@@ -448,6 +554,8 @@ function updateTest(t) {
     const [r, b] = players;
     $('#resR').textContent = r.count; $('#resB').textContent = b.count;
     $('#resR2').textContent = `최고 ${Math.round(r.peak)}회/분`; $('#resB2').textContent = `최고 ${Math.round(b.peak)}회/분`;
+    const avg = testFps.length ? testFps.reduce((a, c) => a + c, 0) / testFps.length : 0;
+    $('#resInfo').textContent = `엔진${ENGINE_NAMES[engineKind] || '-'} (${engine?.delegate || '-'}) · 평균 ${avg.toFixed(0)} FPS · 인식 ${inferMs.toFixed(0)}ms`;
     $('#result').style.display = 'flex';
   } else {
     msgEl.style.display = 'flex'; msgEl.innerHTML = `<div class="big" style="font-size:64px;opacity:.85">${Math.ceil(left)}</div>`;
@@ -455,10 +563,8 @@ function updateTest(t) {
 }
 
 // ───────────────────────── 그리기 ─────────────────────────
-let fps = 0, fpsN = 0, fpsT = 0;
-
-function fitCanvas(cv) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+function fitCanvas(cv, maxDpr = 1) {
+  const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
   const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   return dpr;
@@ -469,13 +575,10 @@ function videoRect() {
   const s = Math.min(W / vw, H / vh);
   return { x: (W - vw * s) / 2, y: (H - vh * s) / 2, w: vw * s, h: vh * s };
 }
-
-function boxRect(r, i) {
-  return { x: r.x + r.w * (i ? 0.515 : 0.03), y: r.y + r.h * 0.04, w: r.w * 0.455, h: r.h * 0.92 };
-}
+function boxRect(r, i) { return { x: r.x + r.w * (i ? 0.515 : 0.03), y: r.y + r.h * 0.04, w: r.w * 0.455, h: r.h * 0.92 }; }
 
 function drawView() {
-  const dpr = fitCanvas(view);
+  const dpr = fitCanvas(view, 1);
   const W = view.width, H = view.height;
   vctx.fillStyle = '#1d1a24'; vctx.fillRect(0, 0, W, H);
   const r = videoRect(), mirror = $('#chkMirror').checked;
@@ -491,13 +594,11 @@ function drawView() {
     if (p.present) { vctx.fillStyle = p.color + '22'; vctx.fillRect(b.x, b.y, b.w, b.h); }
     vctx.lineWidth = (5 + p.flash * 10) * dpr; vctx.strokeStyle = p.color;
     vctx.strokeRect(b.x, b.y, b.w, b.h);
-    // 라벨
     vctx.font = `${16 * dpr}px Jua, sans-serif`;
-    const label = p.name + (p.present ? ' ✓' : '');
+    const label = p.name + (p.present ? (p.primary === 'alt' ? ' ✓ 번갈아' : ' ✓') : '');
     const lw = vctx.measureText(label).width + 20 * dpr;
     vctx.fillStyle = p.color; roundRect(vctx, b.x + 8 * dpr, b.y + 8 * dpr, lw, 26 * dpr, 13 * dpr); vctx.fill();
     vctx.fillStyle = '#fff'; vctx.textBaseline = 'middle'; vctx.fillText(label, b.x + 18 * dpr, b.y + 21 * dpr);
-    // 큰 숫자
     vctx.font = `${Math.min(b.h * 0.22, 90 * dpr)}px Jua, sans-serif`; vctx.textAlign = 'right'; vctx.textBaseline = 'top';
     vctx.lineWidth = 6 * dpr; vctx.strokeStyle = '#2b2020'; vctx.strokeText(p.count, b.x + b.w - 12 * dpr, b.y + 10 * dpr);
     vctx.fillStyle = '#ffd23f'; vctx.fillText(p.count, b.x + b.w - 12 * dpr, b.y + 10 * dpr);
@@ -507,7 +608,6 @@ function drawView() {
       vctx.fillStyle = 'rgba(255,255,255,.85)'; vctx.fillText('박스 안에 서 주세요', b.x + b.w / 2, b.y + b.h / 2);
       vctx.textAlign = 'left';
     }
-    // 뼈대
     if (p.present && p.lms) {
       const P = k => { const l = p.lms[k]; return [r.x + (mirror ? 1 - l.x : l.x) * r.w, r.y + l.y * r.h]; };
       vctx.strokeStyle = p.color; vctx.lineWidth = 4 * dpr; vctx.lineCap = 'round';
@@ -515,7 +615,7 @@ function drawView() {
       for (const [a, c] of BONES) { const A = P(a), C = P(c); vctx.moveTo(A[0], A[1]); vctx.lineTo(C[0], C[1]); }
       vctx.stroke();
       vctx.fillStyle = '#fff';
-      for (const k of [0, 11, 12, 23, 24, 27, 28]) { const A = P(k); vctx.beginPath(); vctx.arc(A[0], A[1], 4 * dpr, 0, 7); vctx.fill(); }
+      for (const k of [0, 11, 12, 23, 24, 25, 26, 27, 28]) { const A = P(k); vctx.beginPath(); vctx.arc(A[0], A[1], 4 * dpr, 0, 7); vctx.fill(); }
     }
   });
 }
@@ -526,87 +626,71 @@ function roundRect(c, x, y, w, h, r) {
 }
 
 function drawGraph(p, now) {
-  const cv = p.el.graph, dpr = fitCanvas(cv), ctx = cv.getContext('2d');
+  const cv = p.el.graph, dpr = fitCanvas(cv, 1.5), ctx = cv.getContext('2d');
   const W = cv.width, H = cv.height, T = 4, t0 = now - T;
   ctx.clearRect(0, 0, W, H);
   const X = t => (t - t0) / T * W;
-  // 움직임 에너지
-  const ms = p.motion.filter(m => m.t >= t0);
-  const mMax = Math.max(0.02, ...ms.map(m => m.m));
-  ctx.fillStyle = 'rgba(140,130,115,.18)'; ctx.beginPath(); ctx.moveTo(0, H);
-  ms.forEach(m => ctx.lineTo(X(m.t), H - m.m / mMax * H * 0.35)); ctx.lineTo(W, H); ctx.fill();
-
-  const pts = p.buf.filter(b => b.t >= t0);
-  let R = 0.12; pts.forEach(b => { R = Math.max(R, Math.abs(b.s) * 1.25); });
-  const Y = v => H / 2 - v / R * H * 0.45;
   ctx.strokeStyle = '#e6dcc6'; ctx.lineWidth = 1 * dpr; ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
-  // 임계값
-  ctx.setLineDash([4 * dpr, 4 * dpr]); ctx.strokeStyle = 'rgba(43,32,32,.35)';
-  for (const key of ['hi', 'lo']) {
-    ctx.beginPath(); let on = false;
-    pts.forEach(b => { if (!b.active) { on = false; return; } on ? ctx.lineTo(X(b.t), Y(b[key])) : ctx.moveTo(X(b.t), Y(b[key])); on = true; });
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  // 점프 표시
-  pts.forEach(b => {
-    if (!b.jump) return;
-    ctx.strokeStyle = p.color + '66'; ctx.lineWidth = 2 * dpr;
-    ctx.beginPath(); ctx.moveTo(X(b.t), 0); ctx.lineTo(X(b.t), H); ctx.stroke();
-    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(X(b.t), 8 * dpr, 4 * dpr, 0, 7); ctx.fill();
+  // 카운트된 점프
+  p.events.forEach(e => {
+    if (e < t0) return;
+    ctx.strokeStyle = p.color + '55'; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(X(e), 0); ctx.lineTo(X(e), H); ctx.stroke();
+    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(X(e), 8 * dpr, 4 * dpr, 0, 7); ctx.fill();
   });
-  // 신호
-  ctx.strokeStyle = p.color; ctx.lineWidth = 2.5 * dpr; ctx.beginPath();
-  pts.forEach((b, i) => i ? ctx.lineTo(X(b.t), Y(b.s)) : ctx.moveTo(X(b.t), Y(b.s)));
-  ctx.stroke();
+  const drawCh = (ch, color, width, primary) => {
+    const pts = ch.buf.filter(b => b.t >= t0);
+    if (!pts.length) return;
+    let R = 0.1; pts.forEach(b => { R = Math.max(R, Math.abs(b.s) * 1.25); });
+    const Y = v => H / 2 - v / R * H * 0.42;
+    if (primary) {
+      ctx.setLineDash([4 * dpr, 4 * dpr]); ctx.strokeStyle = 'rgba(43,32,32,.35)'; ctx.lineWidth = 1 * dpr;
+      for (const key of ['hi', 'lo']) {
+        ctx.beginPath(); let on = false;
+        pts.forEach(b => { if (!b.active) { on = false; return; } on ? ctx.lineTo(X(b.t), Y(b[key])) : ctx.moveTo(X(b.t), Y(b[key])); on = true; });
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = width * dpr; ctx.beginPath();
+    let prev = null;
+    pts.forEach(b => { (prev && b.t - prev < 0.3) ? ctx.lineTo(X(b.t), Y(b.s)) : ctx.moveTo(X(b.t), Y(b.s)); prev = b.t; });
+    ctx.stroke();
+  };
+  const altPrimary = p.primary === 'alt';
+  drawCh(p.bob, altPrimary ? 'rgba(0,0,0,.18)' : p.color, altPrimary ? 1.5 : 2.5, !altPrimary);
+  drawCh(p.alt, altPrimary ? '#8b5cf6' : 'rgba(139,92,246,.35)', altPrimary ? 2.5 : 1.5, altPrimary);
+  const ch = p.channel;
   ctx.fillStyle = '#8a7f73'; ctx.font = `${11 * dpr}px Jua, sans-serif`; ctx.textBaseline = 'top';
-  ctx.fillText(`몸 높이 변화 · 리듬 ${(p.rateAC * 60).toFixed(0)}/분 (신뢰 ${p.confAC.toFixed(2)}) · 간격 ${(p.rateIv * 60).toFixed(0)}/분`, 6 * dpr, 4 * dpr);
+  ctx.fillText(`${altPrimary ? '보라=발 좌우 차이(주)' : '색=몸 오르내림(주)'} · 리듬 ${(ch.stepRate() * 60).toFixed(0)}/분 (신뢰 ${ch.ac.conf.toFixed(2)}) · 간격 ${(p.rateIv * 60 || 0).toFixed(0)}/분`, 6 * dpr, 4 * dpr);
 }
 
 function updatePanels() {
   players.forEach(p => {
     p.el.seen.textContent = p.present ? '● 인식 중' : '● 인식 안 됨';
     p.el.seen.classList.toggle('on', p.present);
+    p.el.mode.textContent = p.primary === 'alt' ? '번갈아뛰기' : '모아뛰기';
+    p.el.mode.classList.toggle('alt', p.primary === 'alt');
     p.el.cnt.textContent = p.count;
     p.el.jpm.textContent = Math.round(p.rate * 60);
     p.el.pk.textContent = Math.round(p.peak);
-    p.el.amp.textContent = p.amp.toFixed(2);
-    p.el.min.textContent = p.minAmp.toFixed(2);
+    p.el.ampB.textContent = p.bob.amp.toFixed(2); p.el.minB.textContent = p.minAmp.toFixed(2);
+    p.el.ampA.textContent = p.alt.amp.toFixed(2); p.el.minA.textContent = p.minAmpAlt.toFixed(2);
   });
 }
 
 // ───────────────────────── 메인 루프 ─────────────────────────
-function loop() {
-  requestAnimationFrame(loop);
-  const nowMs = performance.now(), t = nowMs / 1000;
-  if (running && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-    lastVideoTime = video.currentTime;
-    const m = motionEnergy();
-    players.forEach((p, i) => { p.motion.push({ t, m: m[i] }); while (p.motion.length && p.motion[0].t < t - 5) p.motion.shift(); });
-    if (landmarker) {
-      const res = landmarker.detectForVideo(video, nowMs);
-      assign(res, t);
-      fpsN++;
-    }
-  }
-  if (t - fpsT >= 1) {
-    fps = fpsN / (t - fpsT); fpsN = 0; fpsT = t;
-    if (landmarker && running) statusEl.textContent = `인식 중 · ${fps.toFixed(0)} FPS`;
-  }
-  updateTest(t);
-  drawView();
-  players.forEach(p => drawGraph(p, t));
-  updatePanels();
-}
+let fpsN = 0, fpsT = 0, uiT = 0;
 
-function assign(res, t) {
+function assign(poses, t) {
   const mirror = $('#chkMirror').checked;
   const vw = video.videoWidth, vh = video.videoHeight;
   const cand = [[], []];
-  for (const lms of res.landmarks || []) {
-    const hx = (lms[23].x + lms[24].x) / 2, dx = mirror ? 1 - hx : hx;
-    const side = dx < 0.5 ? 0 : 1;
-    cand[side].push({ lms, d: Math.abs(dx - (side ? 0.745 : 0.255)) });
+  for (const p of poses) {
+    const l = p.lms;
+    const hx = (l[23].x + l[24].x) / 2, dx = mirror ? 1 - hx : hx;
+    const side = p.side ?? (dx < 0.5 ? 0 : 1);
+    cand[side].push({ lms: l, d: Math.abs(dx - (side ? 0.745 : 0.255)) });
   }
   players.forEach((p, i) => {
     if (cand[i].length) { cand[i].sort((a, b) => a.d - b.d); p.feed(t, cand[i][0].lms, vw, vh); }
@@ -614,7 +698,34 @@ function assign(res, t) {
   });
 }
 
-window.__debug = { Player, players }; // 개발자 점검용
+function loop() {
+  requestAnimationFrame(loop);
+  const nowMs = performance.now(), t = nowMs / 1000;
+  if (running && engine && !busy && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime; busy = true;
+    const eng = engine;
+    Promise.resolve().then(() => eng.detect(nowMs)).then(poses => {
+      if (eng !== engine) return;
+      assign(poses, nowMs / 1000);
+      inferMs = inferMs ? inferMs * 0.85 + (performance.now() - nowMs) * 0.15 : performance.now() - nowMs;
+      fpsN++;
+    }).catch(e => console.error(e)).finally(() => { busy = false; });
+  }
+  if (t - fpsT >= 1) {
+    const fps = fpsN / (t - fpsT); fpsN = 0; fpsT = t;
+    if (test && test.phase === 'run') testFps.push(fps);
+    if (engine && running && !loading) statusEl.textContent = `엔진${ENGINE_NAMES[engineKind]} · ${engine.delegate} · 인식 ${inferMs.toFixed(0)}ms · ${fps.toFixed(0)} FPS`;
+  }
+  updateTest(t);
+  drawView();
+  if (t - uiT > 0.066) { // 화면 표시 갱신은 초당 15번이면 충분
+    uiT = t;
+    if ($('#chkGraph').checked) players.forEach(p => drawGraph(p, t));
+    updatePanels();
+  }
+}
+
+window.__debug = { Player, players, ENGINES }; // 개발자 점검용
 requestAnimationFrame(loop);
 </script>
 </body>
