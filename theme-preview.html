@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>줄넘기 레이스 테마</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #2b2020; --cream: #fff8e7; --paper: #fffdf6; --muted: #8a7f73;
+    --sky1: #7cc8ff; --sky2: #d6f0ff; --grass: #6cc24a; --grass2: #4fa83a;
+    --track: #d9643a; --track2: #c4542d;
+    --red: #ff4d5a; --red-d: #c9303d; --blue: #3d8bff; --blue-d: #2563c9;
+    --yellow: #ffd23f; --green: #3fbf6a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'Jua', system-ui, sans-serif; color: var(--ink);
+    background: #f3ead6;
+    background-image: radial-gradient(#e6d9bb 1.2px, transparent 1.2px); background-size: 18px 18px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 16px 60px; }
+  .hero { text-align: center; margin-bottom: 26px; }
+  .hero h1 {
+    font-size: clamp(36px, 7vw, 64px); margin: 0; font-weight: 400; color: var(--yellow);
+    -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 5px 0 var(--ink);
+  }
+  .hero p { margin: 8px 0 0; color: var(--muted); font-size: 17px; }
+  h2.sec { font-weight: 400; font-size: 24px; margin: 38px 0 12px; display: flex; align-items: center; gap: 10px; }
+  h2.sec .no { background: var(--ink); color: var(--yellow); border-radius: 10px; padding: 0 10px; font-size: 18px; }
+  .note { color: var(--muted); font-size: 15px; margin: -4px 0 12px; line-height: 1.5; }
+  .card { background: var(--paper); border: 3px solid var(--ink); border-radius: 16px; padding: 16px; box-shadow: 0 5px 0 var(--ink); }
+  .kit { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+  .card h3 { margin: 0 0 12px; font-weight: 400; font-size: 19px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; }
+  .sw { border: 2px solid var(--ink); border-radius: 10px; overflow: hidden; font-size: 13px; background: #fff; }
+  .sw i { display: block; height: 42px; }
+  .sw span { display: block; padding: 4px 6px; line-height: 1.25; }
+  .sw small { color: var(--muted); font-size: 11px; }
+  .fonts .f1 { font-size: 40px; line-height: 1.1; }
+  .fonts .f2 { font-size: 22px; margin: 6px 0; }
+  .fonts .f3 { font-size: 15px; color: var(--muted); line-height: 1.6; }
+  .lineup { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .ani { background: #fff; border: 2px solid var(--ink); border-radius: 12px; text-align: center; padding: 12px 4px 8px; }
+  .ani .stage { height: 84px; display: flex; align-items: flex-end; justify-content: center; border-bottom: 3px dashed #e5d9bf; margin: 0 8px 6px; padding-bottom: 4px; }
+  .ani canvas { image-rendering: pixelated; }
+  @media (max-width: 760px) { .kit { grid-template-columns: 1fr; } .lineup { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ───────── 기기 화면 (16:10) ───────── */
+  .device { background: #222; border-radius: 22px; padding: 14px; box-shadow: 0 6px 0 #111; }
+  .screen {
+    position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 8px;
+    container-type: inline-size; background: var(--sky2);
+  }
+  canvas.spr { image-rendering: pixelated; display: block; }
+  .pill { display: inline-flex; align-items: center; gap: .6cqw; border: .3cqw solid var(--ink); border-radius: 99px; padding: .2cqw 1.4cqw; background: var(--cream); font-size: 1.6cqw; }
+  .btn3d { border: .35cqw solid var(--ink); border-radius: 1.4cqw; box-shadow: 0 .6cqw 0 var(--ink); background: var(--cream); }
+  .outline-text { -webkit-text-stroke: .35cqw var(--ink); paint-order: stroke fill; }
+
+  /* 하늘 + 만국기 */
+  .sky { position: absolute; inset: 0; background: linear-gradient(var(--sky1), var(--sky2) 70%); }
+  .cloud { position: absolute; background: #fff; border-radius: 99px; opacity: .9; }
+  .cloud::before, .cloud::after { content: ''; position: absolute; background: #fff; border-radius: 50%; }
+  .cloud::before { width: 50%; height: 160%; left: 15%; bottom: 20%; }
+  .cloud::after { width: 35%; height: 120%; left: 50%; bottom: 25%; }
+  .bunting { position: absolute; left: 0; right: 0; top: 0; height: 6cqw; display: flex; justify-content: space-around; }
+  .bunting::before { content: ''; position: absolute; left: -2%; right: -2%; top: .8cqw; height: .25cqw; background: var(--ink); border-radius: 99px; transform: rotate(.3deg); }
+  .bunting span { width: 3.2cqw; height: 3.6cqw; margin-top: .9cqw; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+
+  /* ① 메인 */
+  .s-main .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 24%; background: var(--grass); border-top: .5cqw solid var(--grass2); }
+  .s-main .ground::before { content: ''; position: absolute; left: 0; right: 0; top: 34%; height: 36%; background: var(--track); border-top: .3cqw solid #fff; border-bottom: .3cqw solid #fff; }
+  .s-main .parade { position: absolute; left: 0; right: 0; top: 0; height: 64%; width: 100%; }
+  .s-main .title { position: absolute; top: 9%; left: 0; right: 0; text-align: center; font-size: 8.4cqw; color: var(--yellow); -webkit-text-stroke: .7cqw var(--ink); paint-order: stroke fill; text-shadow: 0 .8cqw 0 var(--ink); line-height: 1; }
+  .s-main .title em { font-style: normal; color: #fff; }
+  .s-main .subtitle { position: absolute; top: 26%; left: 0; right: 0; text-align: center; font-size: 2cqw; }
+  .s-main .modes { position: absolute; top: 34%; left: 8%; right: 8%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.4cqw; }
+  .mode { padding: 1.6cqw 1cqw 1.4cqw; text-align: center; color: #fff; }
+  .mode .ic { font-size: 5cqw; line-height: 1.1; }
+  .mode .mt { font-size: 3cqw; -webkit-text-stroke: .3cqw var(--ink); paint-order: stroke fill; }
+  .mode .md { font-size: 1.5cqw; margin-top: .4cqw; opacity: .95; }
+  .m1 { background: var(--red); } .m2 { background: var(--blue); } .m3 { background: var(--green); }
+  .s-main .minor { position: absolute; top: 66%; left: 0; right: 0; display: flex; justify-content: center; gap: 1.6cqw; }
+  .s-main .minor .btn3d { font-size: 1.7cqw; padding: .5cqw 1.8cqw; box-shadow: 0 .4cqw 0 var(--ink); }
+
+  /* ② 설정 */
+  .s-setup { background: #ffeec2; }
+  .topbar { position: absolute; left: 0; right: 0; top: 0; height: 9%; background: var(--yellow); border-bottom: .4cqw solid var(--ink); display: flex; align-items: center; gap: 1.5cqw; padding: 0 2cqw; font-size: 2.4cqw; }
+  .topbar .r { margin-left: auto; }
+  .teams { position: absolute; top: 12%; left: 2.5%; right: 2.5%; bottom: 15%; display: grid; grid-template-columns: 1fr auto 1fr; gap: 1.6cqw; align-items: stretch; }
+  .team { background: var(--paper); border: .4cqw solid var(--ink); border-radius: 1.6cqw; overflow: hidden; display: flex; flex-direction: column; }
+  .team .th { color: #fff; font-size: 2.4cqw; padding: .6cqw 1.6cqw; display: flex; align-items: center; gap: 1cqw; }
+  .team.red .th { background: var(--red); } .team.blue .th { background: var(--blue); }
+  .team .th .who { margin-left: auto; font-size: 1.6cqw; opacity: .95; }
+  .team .body { padding: 1cqw 1.6cqw; display: flex; flex-direction: column; gap: 1cqw; flex: 1; }
+  .field { display: flex; align-items: center; gap: 1cqw; font-size: 1.6cqw; }
+  .field > label { width: 6cqw; color: var(--muted); flex: none; }
+  .inputbox { flex: 1; border: .3cqw solid var(--ink); border-radius: 1cqw; padding: .3cqw 1cqw; background: #fff; font-size: 2cqw; }
+  .chips { display: flex; gap: .6cqw; }
+  .chips span { width: 3.4cqw; height: 3.4cqw; display: grid; place-items: center; border: .3cqw solid var(--ink); border-radius: 50%; background: #fff; font-size: 1.6cqw; }
+  .red .chips .on { background: var(--red); color: #fff; } .blue .chips .on { background: var(--blue); color: #fff; }
+  .agrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .7cqw; flex: 1; }
+  .agrid .cell { border: .3cqw solid #e2d5b8; border-radius: 1cqw; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: .5cqw 0 .3cqw; font-size: 1.2cqw; gap: .3cqw; }
+  .red .agrid .on { border-color: var(--red); background: #ffe3e5; box-shadow: 0 0 0 .3cqw var(--red); }
+  .blue .agrid .on { border-color: var(--blue); background: #e0ecff; box-shadow: 0 0 0 .3cqw var(--blue); }
+  .vs { align-self: center; font-size: 4.6cqw; color: var(--yellow); -webkit-text-stroke: .5cqw var(--ink); paint-order: stroke fill; }
+  .setup-bottom { position: absolute; left: 2.5%; right: 2.5%; bottom: 3%; height: 9%; display: flex; align-items: center; gap: 2cqw; }
+  .toggle { display: flex; align-items: center; gap: 1cqw; font-size: 1.8cqw; }
+  .switch { width: 5.4cqw; height: 2.8cqw; border-radius: 99px; background: var(--green); border: .3cqw solid var(--ink); position: relative; }
+  .switch::after { content: ''; position: absolute; right: .3cqw; top: .25cqw; width: 1.8cqw; height: 1.8cqw; border-radius: 50%; background: #fff; border: .25cqw solid var(--ink); }
+  .go { margin-left: auto; background: var(--green); color: #fff; font-size: 2.6cqw; padding: .7cqw 3cqw; }
+  .go span { -webkit-text-stroke: .3cqw var(--ink); paint-order: stroke fill; }
+
+  /* ③ 레이스 공통 : 트랙 + 카메라 */
+  .track { position: absolute; left: 0; right: 0; top: 0; height: 30%; background: var(--grass); border-bottom: .5cqw solid var(--ink); }
+  .track::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 4cqw, rgba(0,0,0,.05) 4cqw 8cqw); }
+  .lanes { position: absolute; left: 1.2cqw; right: 1.2cqw; top: 1.2cqw; bottom: 1.2cqw; background: var(--track); border: .35cqw solid #fff; border-radius: .6cqw; overflow: hidden; }
+  .lanes::before { content: ''; position: absolute; left: 13%; right: 14%; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,.28) 0 .2cqw, transparent .2cqw 10%); }
+  .lane { position: absolute; left: 0; right: 0; height: 50%; }
+  .lane.red { top: 0; border-bottom: .3cqw solid #fff; } .lane.blue { bottom: 0; }
+  .lanetag { position: absolute; left: .8cqw; top: 50%; transform: translateY(-50%); color: #fff; font-size: 1.5cqw; padding: .2cqw 1cqw; border-radius: 99px; border: .25cqw solid var(--ink); display: flex; align-items: center; gap: .5cqw; z-index: 2; }
+  .lane.red .lanetag { background: var(--red); } .lane.blue .lanetag { background: var(--blue); }
+  .startline { position: absolute; left: 13%; top: 0; bottom: 0; width: .4cqw; background: #fff; }
+  .finish { position: absolute; left: 86%; top: 0; bottom: 0; width: 2.2cqw; background: conic-gradient(#fff 25%, var(--ink) 0 50%, #fff 0 75%, var(--ink) 0) 0 0 / 1.1cqw 1.1cqw; border-left: .2cqw solid var(--ink); border-right: .2cqw solid var(--ink); }
+  .flag { position: absolute; left: calc(86% + 1.1cqw); top: -1.2cqw; font-size: 2.6cqw; z-index: 3; }
+  .lanecount { position: absolute; right: .8cqw; top: 50%; transform: translateY(-50%); text-align: right; color: #fff; line-height: 1; z-index: 2; }
+  .lanecount b { font-weight: 400; font-size: 3cqw; -webkit-text-stroke: .3cqw var(--ink); paint-order: stroke fill; color: var(--yellow); }
+  .lanecount small { display: block; font-size: 1.2cqw; margin-top: .2cqw; }
+  .runner { position: absolute; bottom: 12%; transform: translateX(-50%); z-index: 1; }
+  .runner .dust { position: absolute; left: -2.2cqw; bottom: 0; font-size: 1.6cqw; opacity: .8; }
+  .seg { position: absolute; top: 0; bottom: 0; width: 0; border-left: .35cqw dashed var(--yellow); }
+  .seg::after { content: ''; position: absolute; top: 50%; left: -.9cqw; width: 1.4cqw; height: .7cqw; transform: translateY(-50%) rotate(-30deg); background: var(--yellow); border: .2cqw solid var(--ink); border-radius: .3cqw; }
+  .timer { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); z-index: 5; background: var(--ink); color: var(--yellow); font-size: 2.4cqw; padding: .3cqw 2cqw; border-radius: 99px; border: .35cqw solid var(--yellow); }
+
+  .cam { position: absolute; left: 0; right: 0; top: 30%; bottom: 0; background: linear-gradient(#59627a 0 58%, #9a8566 58% 100%); overflow: hidden; }
+  .cam::before { content: ''; position: absolute; left: 0; right: 0; top: 18%; height: 22%; background: repeating-linear-gradient(90deg, #4c556c 0 9cqw, #535c74 9cqw 18cqw); opacity: .7; }
+  .cam::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 8cqw rgba(0,0,0,.45); pointer-events: none; }
+  .box { position: absolute; top: 4%; bottom: 4%; width: 45.5%; border: .7cqw solid; border-radius: .6cqw; z-index: 1; }
+  .box.red { left: 3%; border-color: var(--red); background: rgba(255,77,90,.08); }
+  .box.blue { left: 51.5%; border-color: var(--blue); background: rgba(61,139,255,.08); }
+  .blabel { position: absolute; left: 1cqw; top: 1cqw; color: #fff; font-size: 1.6cqw; padding: .2cqw 1.2cqw; border-radius: 99px; }
+  .red .blabel { background: var(--red); } .blue .blabel { background: var(--blue); }
+  .bcount { position: absolute; right: 1.2cqw; top: .6cqw; font-size: 6cqw; color: var(--yellow); -webkit-text-stroke: .5cqw var(--ink); paint-order: stroke fill; line-height: 1; }
+  .kid { position: absolute; left: 50%; bottom: 4%; height: 78%; transform: translateX(-50%); animation: hop .42s ease-in-out infinite; }
+  .box.blue .kid { animation-duration: .36s; }
+  @keyframes hop { 0%, 100% { transform: translate(-50%, 0); } 45% { transform: translate(-50%, -6%); } }
+  .speed { position: absolute; left: 1.2cqw; right: 1.2cqw; bottom: 1cqw; display: flex; align-items: center; gap: 1cqw; color: #fff; font-size: 1.6cqw; text-shadow: 0 .2cqw 0 var(--ink); }
+  .speed .bar { flex: 1; height: 1.4cqw; border: .25cqw solid var(--ink); border-radius: 99px; background: rgba(255,255,255,.35); overflow: hidden; }
+  .speed .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--yellow), #ff8a3d, var(--red)); }
+  .ghost { border-style: dashed !important; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { border-color: rgba(255,255,255,.8); } }
+  .callout { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); text-align: center; color: #fff; width: 90%; }
+  .callout .t { font-size: 3.4cqw; color: var(--yellow); -webkit-text-stroke: .35cqw var(--ink); paint-order: stroke fill; }
+  .callout .s { font-size: 1.8cqw; margin-top: .6cqw; text-shadow: 0 .2cqw 0 var(--ink); }
+  .banner { position: absolute; left: 50%; top: 88%; transform: translate(-50%, -50%) rotate(-3deg); z-index: 6; background: var(--yellow); border: .45cqw solid var(--ink); border-radius: 1.4cqw; padding: .3cqw 3cqw; font-size: 3.4cqw; box-shadow: 0 .6cqw 0 var(--ink); }
+  .relaychips { position: absolute; top: 50%; transform: translateY(-50%); left: 15%; display: flex; gap: .4cqw; z-index: 2; align-items: center; font-size: 1.2cqw; color: #fff; }
+  .relaychips span { padding: .1cqw .7cqw; border-radius: 99px; background: rgba(0,0,0,.25); }
+  .relaychips span.now { background: var(--yellow); color: var(--ink); border: .2cqw solid var(--ink); }
+  .relaychips span.done { opacity: .55; text-decoration: line-through; }
+  .countdown { position: absolute; left: 50%; top: 62%; transform: translate(-50%, -50%); z-index: 6; font-size: 20cqw; line-height: 1; color: var(--yellow); -webkit-text-stroke: 1.2cqw var(--ink); paint-order: stroke fill; text-shadow: 0 1.2cqw 0 var(--ink); }
+  .ready { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); font-size: 2.4cqw; padding: .4cqw 1.6cqw; z-index: 2; }
+
+  /* ⑤ 결과 */
+  .s-result .sky { background: linear-gradient(#ffd96b, #fff3c4); }
+  .rays { position: absolute; left: 50%; top: 52%; width: 140cqw; height: 140cqw; transform: translate(-50%, -50%); background: repeating-conic-gradient(rgba(255,255,255,.35) 0 10deg, transparent 10deg 20deg); border-radius: 50%; }
+  .confetti i { position: absolute; width: 1cqw; height: 1.6cqw; border-radius: .2cqw; }
+  .res-title { position: absolute; top: 5%; left: 0; right: 0; text-align: center; font-size: 6cqw; color: #fff; -webkit-text-stroke: .6cqw var(--ink); paint-order: stroke fill; text-shadow: 0 .7cqw 0 var(--ink); }
+  .res-title .r { color: var(--red); }
+  .podium { position: absolute; left: 6%; width: 38%; bottom: 8%; height: 66%; }
+  .pod { position: absolute; bottom: 0; width: 46%; border: .4cqw solid var(--ink); border-bottom: none; display: flex; justify-content: center; padding-top: .6cqw; font-size: 4cqw; color: #fff; }
+  .pod.p1 { left: 27%; height: 46%; background: var(--red); z-index: 1; }
+  .pod.p2 { left: 0; width: 34%; height: 28%; background: var(--blue); }
+  .pod .who { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+  .crown { font-size: 3.4cqw; margin-bottom: -.6cqw; }
+  .medal { position: absolute; top: 18%; left: 54%; font-size: 6cqw; transform: rotate(10deg); }
+  .stats { position: absolute; right: 5%; width: 48%; top: 24%; padding: 1.4cqw 2cqw; border-radius: 1.6cqw; }
+  .stats table { width: 100%; border-collapse: collapse; font-size: 1.9cqw; }
+  .stats th { font-weight: 400; color: #fff; padding: .5cqw; font-size: 1.8cqw; }
+  .stats th.r { background: var(--red); border-radius: 1cqw 0 0 0; } .stats th.b { background: var(--blue); border-radius: 0 1cqw 0 0; }
+  .stats td { padding: .6cqw .5cqw; border-bottom: .2cqw dashed #e2d5b8; text-align: center; }
+  .stats td:first-child { text-align: left; color: var(--muted); font-size: 1.6cqw; }
+  .stats td.win { color: var(--red-d); }
+  .newrec { display: inline-block; margin-top: 1cqw; background: var(--yellow); border: .3cqw solid var(--ink); border-radius: 99px; padding: .2cqw 1.4cqw; font-size: 1.7cqw; transform: rotate(-2deg); }
+  .res-btns { position: absolute; right: 5%; width: 48%; bottom: 8%; display: flex; gap: 1.6cqw; }
+  .res-btns .btn3d { flex: 1; text-align: center; font-size: 2.2cqw; padding: .7cqw; }
+  .res-btns .again { background: var(--green); color: #fff; }
+
+  /* ⑥ 기록 */
+  .s-rec { background: #2f2748; color: #fff; }
+  .s-rec .stars { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.5) .15cqw, transparent .2cqw); background-size: 6cqw 6cqw; }
+  .rec-title { position: absolute; top: 4%; left: 3%; font-size: 4cqw; color: var(--yellow); -webkit-text-stroke: .4cqw var(--ink); paint-order: stroke fill; }
+  .tabs { position: absolute; top: 5.5%; right: 3%; display: flex; gap: .8cqw; }
+  .tabs span { font-size: 1.7cqw; padding: .4cqw 1.6cqw; border-radius: 1cqw 1cqw 0 0; background: rgba(255,255,255,.12); }
+  .tabs span.on { background: var(--yellow); color: var(--ink); }
+  .ranks { position: absolute; left: 3%; top: 18%; width: 60%; bottom: 5%; background: var(--paper); color: var(--ink); border: .4cqw solid var(--ink); border-radius: 1.6cqw; padding: 1cqw 1.4cqw; }
+  .filters { display: flex; gap: .6cqw; margin-bottom: .8cqw; font-size: 1.4cqw; align-items: center; color: var(--muted); }
+  .filters span { padding: .1cqw 1cqw; border-radius: 99px; border: .25cqw solid var(--ink); color: var(--ink); background: #fff; }
+  .filters span.on { background: var(--ink); color: var(--yellow); }
+  .rrow { display: grid; grid-template-columns: 4cqw 4.2cqw 1fr 6cqw 9cqw; align-items: center; gap: .8cqw; padding: .55cqw .4cqw; border-bottom: .2cqw dashed #e2d5b8; font-size: 1.8cqw; }
+  .rrow .no { font-size: 2.4cqw; text-align: center; }
+  .rrow .gr { font-size: 1.4cqw; color: var(--muted); }
+  .rrow .val { text-align: right; }
+  .rrow .val small { font-size: 1.2cqw; color: var(--muted); }
+  .rrow.top { background: #fff4cc; border-radius: 1cqw; }
+  .today { position: absolute; right: 3%; top: 18%; width: 31%; padding: 1.4cqw; background: var(--red); border: .4cqw solid var(--ink); border-radius: 1.6cqw; box-shadow: 0 .6cqw 0 var(--ink); text-align: center; }
+  .today h4 { margin: 0; font-weight: 400; font-size: 2cqw; }
+  .today .big { font-size: 6cqw; color: var(--yellow); -webkit-text-stroke: .45cqw var(--ink); paint-order: stroke fill; line-height: 1.1; }
+  .today .who { font-size: 1.7cqw; display: flex; justify-content: center; align-items: flex-end; gap: .8cqw; }
+  .mini { position: absolute; right: 3%; width: 31%; bottom: 5%; top: 62%; background: rgba(255,255,255,.1); border: .3cqw solid rgba(255,255,255,.3); border-radius: 1.6cqw; padding: 1cqw 1.4cqw; font-size: 1.5cqw; line-height: 1.7; }
+  .mini b { font-weight: 400; color: var(--yellow); }
+  figcaption { margin-top: 10px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+  figure { margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <h1>줄넘기 레이스!</h1>
+    <p>테마 디자인 시안 v1 · 갤럭시탭 S7 FE 가로(16:10) 기준 · 운동회 + 픽셀아트</p>
+  </header>
+
+  <section class="kit">
+    <div class="card">
+      <h3>🎨 컬러 팔레트</h3>
+      <div class="swatches">
+        <div class="sw"><i style="background:#ff4d5a"></i><span>빨강 팀<br><small>#FF4D5A</small></span></div>
+        <div class="sw"><i style="background:#3d8bff"></i><span>파랑 팀<br><small>#3D8BFF</small></span></div>
+        <div class="sw"><i style="background:#ffd23f"></i><span>강조/점수<br><small>#FFD23F</small></span></div>
+        <div class="sw"><i style="background:#d9643a"></i><span>트랙<br><small>#D9643A</small></span></div>
+        <div class="sw"><i style="background:#6cc24a"></i><span>잔디<br><small>#6CC24A</small></span></div>
+        <div class="sw"><i style="background:#7cc8ff"></i><span>하늘<br><small>#7CC8FF</small></span></div>
+        <div class="sw"><i style="background:#fff8e7"></i><span>크림 배경<br><small>#FFF8E7</small></span></div>
+        <div class="sw"><i style="background:#2b2020"></i><span>외곽선<br><small>#2B2020</small></span></div>
+      </div>
+    </div>
+    <div class="card fonts">
+      <h3>✏️ 글꼴 — 주아체 (Jua)</h3>
+      <div class="f1 outline-text" style="color:var(--yellow);-webkit-text-stroke:3px var(--ink)">점프! 152회</div>
+      <div class="f2">빨강 팀 승리! 개인 신기록 🎉</div>
+      <div class="f3">동글동글하고 굵어서 2~3m 떨어진 곳에서도 잘 보이는 글꼴이에요. 모든 큰 글씨에는 진한 외곽선과 아래 그림자를 넣어서 장난감 같은 느낌을 줘요.</div>
+    </div>
+  </section>
+
+  <h2 class="sec">🐾 캐릭터 10종</h2>
+  <p class="note">외곽선을 넣은 16픽셀 도트 동물들이에요. 모두 2프레임으로 달리고, 능력치는 똑같고 생김새만 달라요.</p>
+  <div class="card"><div class="lineup" id="lineup"></div></div>
+
+  <h2 class="sec"><span class="no">1</span>메인 화면</h2>
+  <div class="device"><div class="screen s-main">
+    <div class="sky"></div>
+    <div class="cloud" style="left:6%;top:16%;width:10cqw;height:2.6cqw"></div>
+    <div class="cloud" style="left:80%;top:22%;width:12cqw;height:3cqw"></div>
+    <div class="bunting" data-bunting></div>
+    <div class="title">줄넘기 <em>레이스!</em></div>
+    <div class="subtitle">폴짝폴짝! 누가 먼저 결승선에 도착할까?</div>
+    <div class="modes">
+      <div class="mode m1 btn3d"><div class="ic">🏁</div><div class="mt">거리 모드</div><div class="md">결승선에 먼저 도착하면 승리!</div></div>
+      <div class="mode m2 btn3d"><div class="ic">⏱️</div><div class="mt">시간 모드</div><div class="md">30·60·90초 동안 더 멀리!</div></div>
+      <div class="mode m3 btn3d"><div class="ic">🏃</div><div class="mt">이어달리기</div><div class="md">팀원과 바통을 이어 달려요</div></div>
+    </div>
+    <div class="minor">
+      <span class="btn3d">🏆 기록 보기</span><span class="btn3d">🔧 인식 테스트</span><span class="btn3d">⚙️ 설정 · 배경음악</span>
+    </div>
+    <div class="ground"><canvas class="parade" id="parade"></canvas></div>
+  </div></div>
+  <figcaption>모드 세 가지가 큰 버튼으로 나와요. 아래 트랙에서는 동물들이 계속 달려요. 배경음악은 ⚙️ 설정에서 파일을 첨부하면 저장되고, 시작 버튼을 누르면 자동으로 재생돼요.</figcaption>
+
+  <h2 class="sec"><span class="no">2</span>플레이어 설정</h2>
+  <div class="device"><div class="screen s-setup">
+    <div class="topbar">◀ 플레이어 설정 <span class="pill r">🏁 거리 모드 · 보통</span></div>
+    <div class="teams">
+      <div class="team red">
+        <div class="th">🔴 빨강 팀<span class="who">1명</span></div>
+        <div class="body">
+          <div class="field"><label>이름</label><div class="inputbox">지우</div></div>
+          <div class="field"><label>학년</label><div class="chips"><span>1</span><span>2</span><span class="on">3</span><span>4</span><span>5</span><span>6</span></div></div>
+          <div class="field" style="align-items:flex-start;flex:1"><label>캐릭터</label><div class="agrid" data-sel="rabbit"></div></div>
+        </div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="team blue">
+        <div class="th">🔵 파랑 팀<span class="who">1명</span></div>
+        <div class="body">
+          <div class="field"><label>이름</label><div class="inputbox">민준</div></div>
+          <div class="field"><label>학년</label><div class="chips"><span>1</span><span>2</span><span>3</span><span>4</span><span class="on">5</span><span>6</span></div></div>
+          <div class="field" style="align-items:flex-start;flex:1"><label>캐릭터</label><div class="agrid" data-sel="cheetah"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="setup-bottom">
+      <div class="toggle">⚖️ 학년 핸디캡 <span class="switch"></span> <span style="color:var(--muted);font-size:1.4cqw">3학년과 5학년이 공정하게 대결해요</span></div>
+      <div class="go btn3d"><span>출발 준비! ▶</span></div>
+    </div>
+  </div></div>
+  <figcaption>팀마다 이름, 학년, 동물을 골라요. 이어달리기 모드에서는 팀 패널에 주자 1·2·3번 탭이 생겨서 한 명씩 정해요.</figcaption>
+
+  <h2 class="sec"><span class="no">3</span>카메라 준비 · 카운트다운</h2>
+  <div class="device"><div class="screen" id="scrReady"></div></div>
+  <figcaption>두 박스에 모두 사람이 인식되면 ✅가 켜지고, 3·2·1 다음 <b>"탕!"</b> 총소리와 함께 출발해요.</figcaption>
+
+  <h2 class="sec"><span class="no">4</span>레이스 화면 (거리 · 시간 모드)</h2>
+  <div class="device"><div class="screen" id="scrRace"></div></div>
+  <figcaption>위 30%는 트랙, 아래 70%는 실시간 카메라예요. 빨리 뛸수록 캐릭터가 빨라지고 박스 아래 속도 막대가 차올라요. 시간 모드에서는 가운데 타이머가 거꾸로 줄어들어요.</figcaption>
+
+  <h2 class="sec"><span class="no">5</span>이어달리기 — 바통 터치</h2>
+  <div class="device"><div class="screen" id="scrRelay"></div></div>
+  <figcaption>트랙이 인원 수만큼 나뉘어요(노란 점선). 구간 끝에 닿으면 "바통 터치!"가 뜨고, 해당 박스가 깜빡이며 다음 주자를 불러요. 교대하는 동안에도 시간은 흘러요.</figcaption>
+
+  <h2 class="sec"><span class="no">6</span>결과 화면</h2>
+  <div class="device"><div class="screen s-result">
+    <div class="sky"></div><div class="rays"></div>
+    <div class="confetti" id="confetti"></div>
+    <div class="res-title"><span class="r">빨강 팀</span> 승리!</div>
+    <div class="podium">
+      <div class="pod p2"><div class="who"><canvas class="spr" data-a="cheetah" data-u=".42" data-anim></canvas><span style="font-size:1.6cqw;color:var(--ink)">민준</span></div>2</div>
+      <div class="pod p1"><div class="who"><span class="crown">👑</span><canvas class="spr" data-a="rabbit" data-u=".62" data-anim data-fps="5"></canvas><span style="font-size:2cqw;color:var(--ink)">지우</span></div>1</div>
+    </div>
+    <div class="stats card">
+      <table>
+        <tr><th></th><th class="r">🔴 지우</th><th class="b">🔵 민준</th></tr>
+        <tr><td>점프 횟수</td><td class="win">128회</td><td>121회</td></tr>
+        <tr><td>최고 속도</td><td class="win">162회/분</td><td>155회/분</td></tr>
+        <tr><td>평균 속도</td><td class="win">141회/분</td><td>133회/분</td></tr>
+        <tr><td>기록</td><td class="win">54.2초</td><td>57.8초</td></tr>
+      </table>
+      <div style="text-align:center"><span class="newrec">⭐ 지우 개인 신기록! (이전 148회/분)</span></div>
+    </div>
+    <div class="res-btns"><span class="btn3d again">🔁 다시 하기</span><span class="btn3d">🏠 메인으로</span></div>
+  </div></div>
+  <figcaption>이긴 팀 색깔로 화면을 꾸미고 시상대를 보여줘요. 기록은 기기에 자동으로 저장되고, 개인 최고 기록을 넘으면 ⭐ 신기록 배지가 떠요.</figcaption>
+
+  <h2 class="sec"><span class="no">7</span>기록 보기 (명예의 전당)</h2>
+  <div class="device"><div class="screen s-rec">
+    <div class="stars"></div>
+    <div class="rec-title">🏆 명예의 전당</div>
+    <div class="tabs"><span>🏁 거리</span><span class="on">⏱️ 시간 60초</span><span>🏃 이어달리기</span></div>
+    <div class="ranks" id="ranks">
+      <div class="filters">학년 <span class="on">전체</span><span>1~2</span><span>3~4</span><span>5~6</span><span style="margin-left:auto">오늘</span><span class="on">전체 기간</span></div>
+    </div>
+    <div class="today">
+      <h4>🔥 오늘의 최고 속도</h4>
+      <div class="big">172</div>
+      <div class="who"><canvas class="spr" data-a="cheetah" data-u=".32" data-anim></canvas>서연 · 6학년 · 회/분</div>
+    </div>
+    <div class="mini">
+      📅 오늘 경기 <b>14</b>판 · 총 점프 <b>2,184</b>회<br>
+      🥇 최다 승리 <b>지우</b> (4승)<br>
+      🗑️ 기록 초기화는 설정에서
+    </div>
+  </div></div>
+  <figcaption>모드별 순위와 학년 필터를 제공해요. 기록은 이 기기(브라우저)에만 저장돼요.</figcaption>
+</div>
+
+<script src="sprites.js"></script>
+<script>
+const { ANIMALS, ORDER, frameCanvas, drawAnimal } = Sprites;
+
+// 스프라이트 캔버스 초기화
+const animated = [];
+function setupSprite(cv) {
+  const key = cv.dataset.a, f0 = frameCanvas(key, 0);
+  cv.width = f0.width; cv.height = f0.height;
+  const u = parseFloat(cv.dataset.u || '.4');
+  cv.style.height = (f0.height * u) + 'cqw';
+  if (cv.dataset.px) cv.style.height = (f0.height * parseFloat(cv.dataset.px)) + 'px';
+  const ctx = cv.getContext('2d');
+  const draw = f => { ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(frameCanvas(key, f), 0, 0); };
+  draw(0);
+  if (cv.hasAttribute('data-anim')) animated.push({ draw, fps: parseFloat(cv.dataset.fps || '6'), off: Math.random() });
+}
+const spr = (key, u, extra = '') => `<canvas class="spr" data-a="${key}" data-u="${u}" ${extra}></canvas>`;
+
+// 캐릭터 라인업
+document.getElementById('lineup').innerHTML = ORDER.map(k =>
+  `<div class="ani"><div class="stage"><canvas class="spr" data-a="${k}" data-px="4.4" data-anim></canvas></div>${ANIMALS[k].name}</div>`).join('');
+
+// 만국기
+document.querySelectorAll('[data-bunting]').forEach(b => {
+  const c = ['#ff4d5a', '#ffd23f', '#3d8bff', '#3fbf6a', '#ff8a3d', '#b06cff'];
+  b.innerHTML = Array.from({ length: 22 }, (_, i) => `<span style="background:${c[i % c.length]}"></span>`).join('');
+});
+
+// 캐릭터 선택 그리드
+document.querySelectorAll('.agrid').forEach(g => {
+  g.innerHTML = ORDER.map(k => `<div class="cell ${k === g.dataset.sel ? 'on' : ''}">${spr(k, .2, k === g.dataset.sel ? 'data-anim' : '')}${ANIMALS[k].name}</div>`).join('');
+});
+
+// 아이 실루엣 (SVG)
+function kid(shirt) {
+  return `<svg class="kid" viewBox="0 0 100 170">
+    <path d="M8 110 Q50 178 92 110" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".85"/>
+    <circle cx="50" cy="26" r="15" fill="#ffd9b8" stroke="#2b2020" stroke-width="3"/>
+    <path d="M36 22 Q50 4 64 22 Q60 14 50 13 Q40 14 36 22Z" fill="#3b2a22"/>
+    <path d="M50 58 L22 92 M50 58 L78 92" stroke="#ffd9b8" stroke-width="8" stroke-linecap="round"/>
+    <path d="M50 58 L22 92 M50 58 L78 92" stroke="#2b2020" stroke-width="10" stroke-linecap="round" opacity=".0"/>
+    <rect x="34" y="42" width="32" height="46" rx="10" fill="${shirt}" stroke="#2b2020" stroke-width="3"/>
+    <path d="M43 88 L40 140 M57 88 L60 140" stroke="#3f4a63" stroke-width="10" stroke-linecap="round"/>
+    <path d="M34 142 h12 M54 142 h12" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="22" cy="93" r="4" fill="#2b2020"/><circle cx="78" cy="93" r="4" fill="#2b2020"/>
+  </svg>`;
+}
+
+// 트랙 + 카메라 화면 빌더
+function lane(cls, tag, key, pos, count, speed, extra = '') {
+  return `<div class="lane ${cls}">
+    <div class="lanetag">${tag}</div>${extra}
+    <div class="runner" data-pos="${pos}" style="left:${pos}%">${speed > 140 ? '<span class="dust">💨</span>' : ''}${spr(key, .34, 'data-anim data-fps="' + (4 + speed / 20) + '"')}</div>
+    <div class="lanecount"><b>${count}</b><small>${speed}회/분</small></div>
+  </div>`;
+}
+function track(lanesHtml, segs = []) {
+  return `<div class="track"><div class="lanes">${lanesHtml}
+    <div class="startline"></div>${segs.map(s => `<div class="seg" style="left:${s}%"></div>`).join('')}<div class="finish"></div></div>
+    <div class="flag">🏁</div></div>`;
+}
+function box(cls, label, count, speed, kidHtml) {
+  return `<div class="box ${cls}"><span class="blabel">${label}</span>${count !== null ? `<span class="bcount">${count}</span>` : ''}${kidHtml || ''}
+    ${speed !== null ? `<div class="speed">⚡ ${speed}회/분<div class="bar"><i style="width:${Math.min(100, speed / 1.8)}%"></i></div></div>` : ''}</div>`;
+}
+
+document.getElementById('scrRace').innerHTML =
+  track(lane('red', '🔴 지우', 'rabbit', 58, 87, 142) + lane('blue', '🔵 민준', 'cheetah', 52, 79, 128)) +
+  `<div class="timer">⏱ 00:23</div>
+   <div class="cam">${box('red', '빨강 · 지우 ✓', 87, 142, kid('#ff4d5a'))}${box('blue', '파랑 · 민준 ✓', 79, 128, kid('#3d8bff'))}</div>`;
+
+document.getElementById('scrReady').innerHTML =
+  track(lane('red', '🔴 지우', 'rabbit', 13, 0, 0) + lane('blue', '🔵 민준', 'cheetah', 13, 0, 0)) +
+  `<div class="cam">${box('red', '빨강 · 지우 ✅', null, null, kid('#ff4d5a'))}${box('blue', '파랑 · 민준 ✅', null, null, kid('#3d8bff'))}
+   <div class="countdown">3</div>
+   <div class="ready pill">두 명 모두 준비 완료! 줄을 잡고 기다려요</div></div>`;
+
+const chips = (arr, now) => `<div class="relaychips">${arr.map((a, i) => `<span class="${i < now ? 'done' : i === now ? 'now' : ''}">${i + 1}.${a}</span>`).join('<span style="background:none;padding:0">→</span>')}</div>`;
+document.getElementById('scrRelay').innerHTML =
+  track(
+    lane('red', '🔴 빨강', 'cat', 46, 41, 136, chips(['토끼', '고양이', '사자'], 1)) +
+    lane('blue', '🔵 파랑', 'dog', 37, 35, 0, chips(['강아지', '펭귄', '판다'], 0)),
+    [37.3, 61.6]) +
+  `<div class="banner">✋ 바통 터치!</div>
+   <div class="cam">${box('red', '빨강 · 2번 하은 🐱', 41, 136, kid('#ff4d5a'))}
+     <div class="box blue ghost"><span class="blabel">파랑 · 다음 주자</span>
+       <div class="callout"><div class="t">다음 주자 들어오세요!</div><div class="s">2번 · 서준 (펭귄) — 박스 안에 서면 바로 출발!</div></div></div>
+   </div>`;
+
+// 기록 목록
+const recs = [
+  ['🥇', 'cheetah', '서연', '6학년', 168], ['🥈', 'rabbit', '지우', '3학년', 162], ['🥉', 'cheetah', '민준', '5학년', 155],
+  ['4', 'frog', '하은', '4학년', 139], ['5', 'penguin', '서준', '2학년', 112], ['6', 'snail', '도윤', '1학년', 96],
+];
+document.getElementById('ranks').insertAdjacentHTML('beforeend', recs.map((r, i) =>
+  `<div class="rrow ${i === 0 ? 'top' : ''}"><span class="no">${r[0]}</span>${spr(r[1], .2, i === 0 ? 'data-anim' : '')}<span>${r[2]}</span><span class="gr">${r[3]}</span><span class="val">${r[4]}<small> 회/분</small></span></div>`).join(''));
+
+// 꽃가루
+document.getElementById('confetti').innerHTML = Array.from({ length: 40 }, (_, i) => {
+  const c = ['#ff4d5a', '#3d8bff', '#3fbf6a', '#fff', '#b06cff', '#ff8a3d'][i % 6];
+  return `<i style="left:${(i * 37) % 100}%;top:${(i * 53) % 90}%;background:${c};transform:rotate(${i * 47}deg)"></i>`;
+}).join('');
+
+document.querySelectorAll('canvas.spr').forEach(setupSprite);
+
+// 메인 화면 행진
+const parade = document.getElementById('parade'), pctx = parade.getContext('2d');
+
+// 애니메이션 루프
+const runners = [...document.querySelectorAll('#scrRace .runner')];
+const runnerSpeed = [3.1, 2.7];
+function tick(ms) {
+  const t = ms / 1000;
+  animated.forEach(a => a.draw(Math.floor(t * a.fps + a.off * 2) % 2));
+  runners.forEach((r, i) => {
+    const p = ((t * runnerSpeed[i] + i * 7) % 73);
+    r.style.left = (13 + p) + '%';
+  });
+  // 행진
+  const W = parade.clientWidth, H = parade.clientHeight;
+  if (parade.width !== W || parade.height !== H) { parade.width = W; parade.height = H; }
+  pctx.clearRect(0, 0, W, H);
+  const s = Math.max(1, Math.floor(H / 22)), gap = W / 7.5;
+  ORDER.forEach((k, i) => {
+    const x = ((t * 60 + i * gap) % (gap * ORDER.length)) - gap * 0.5;
+    drawAnimal(pctx, k, Math.floor(t * 7 + i) % 2, x, H * 0.62, s);
+  });
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

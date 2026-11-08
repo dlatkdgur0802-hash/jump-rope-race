@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>줄넘기 인식 테스트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #2b2020;
+    --cream: #fff8e7;
+    --red: #ff4d5a;
+    --blue: #3d8bff;
+    --yellow: #ffd23f;
+    --panel: #fffdf6;
+    --muted: #8a7f73;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #1d1a24; color: var(--ink);
+    font-family: 'Jua', system-ui, sans-serif;
+    display: grid; grid-template-rows: auto minmax(130px, 34%) 1fr;
+    height: 100dvh; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 6px 10px; background: var(--yellow); border-bottom: 3px solid var(--ink);
+  }
+  header h1 { font-size: 18px; margin: 0 8px 0 0; font-weight: 400; }
+  button, select {
+    font-family: inherit; font-size: 14px; color: var(--ink);
+    background: var(--cream); border: 2px solid var(--ink); border-radius: 8px;
+    padding: 4px 10px; box-shadow: 0 3px 0 var(--ink); cursor: pointer;
+  }
+  button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  button.primary { background: #6cc24a; color: #fff; text-shadow: 0 1px 0 var(--ink); }
+  label.chk { display: flex; align-items: center; gap: 4px; font-size: 14px; }
+  #status { margin-left: auto; font-size: 14px; background: var(--ink); color: var(--yellow); padding: 3px 10px; border-radius: 99px; }
+
+  #panels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; min-height: 0; }
+  .panel {
+    background: var(--panel); border: 3px solid var(--ink); border-radius: 12px;
+    display: grid; grid-template-columns: minmax(150px, 36%) 1fr; gap: 6px; padding: 6px; min-height: 0;
+    position: relative; overflow: hidden;
+  }
+  .panel.red { border-color: var(--red); box-shadow: inset 0 0 0 2px var(--red); }
+  .panel.blue { border-color: var(--blue); box-shadow: inset 0 0 0 2px var(--blue); }
+  .info { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+  .tagrow { display: flex; align-items: center; gap: 6px; }
+  .tag { color: #fff; padding: 1px 10px; border-radius: 99px; font-size: 14px; }
+  .red .tag { background: var(--red); } .blue .tag { background: var(--blue); }
+  .seen { font-size: 12px; color: var(--muted); }
+  .seen.on { color: #2f9e44; }
+  .count { font-size: 44px; line-height: 1; }
+  .count small { font-size: 16px; color: var(--muted); }
+  .stat { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .stat b { color: var(--ink); font-weight: 400; font-size: 16px; }
+  .ctrl { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: auto; flex-wrap: wrap; }
+  .ctrl select, .ctrl button { font-size: 12px; padding: 2px 6px; box-shadow: 0 2px 0 var(--ink); }
+  .ctrl input[type=range] { width: 70px; }
+  .graph { width: 100%; height: 100%; min-height: 0; background: #fbf6e9; border-radius: 8px; border: 2px solid #e6dcc6; }
+
+  #stage { position: relative; min-height: 0; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #msg {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; text-align: center; color: #fff; font-size: 22px; padding: 20px;
+    pointer-events: none;
+  }
+  #msg .big { font-size: 120px; color: var(--yellow); text-shadow: 0 6px 0 var(--ink); line-height: 1; }
+  #msg .small { font-size: 15px; color: #ddd; max-width: 560px; line-height: 1.5; }
+  #result {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(20, 16, 28, .7);
+  }
+  #result .card {
+    background: var(--cream); border: 4px solid var(--ink); border-radius: 16px; padding: 18px 26px;
+    text-align: center; box-shadow: 0 8px 0 var(--ink); min-width: 300px;
+  }
+  #result h2 { margin: 0 0 10px; font-weight: 400; }
+  #result .row { display: flex; gap: 20px; justify-content: center; margin-bottom: 12px; }
+  #result .col { padding: 8px 16px; border-radius: 12px; color: #fff; }
+  #result .col.r { background: var(--red); } #result .col.b { background: var(--blue); }
+  #result .col .n { font-size: 44px; }
+  #result p { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+  video { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔧 줄넘기 인식 테스트</h1>
+  <button id="btnStart" class="primary">📷 카메라 시작</button>
+  <select id="selCam" title="카메라"><option value="">카메라 선택</option></select>
+  <select id="selRes" title="해상도">
+    <option value="640x480" selected>640×480 (권장)</option>
+    <option value="1280x720">1280×720</option>
+  </select>
+  <select id="selModel" title="인식 모델">
+    <option value="lite" selected>모델: 가벼움</option>
+    <option value="full">모델: 정확함</option>
+  </select>
+  <label class="chk"><input type="checkbox" id="chkMirror" checked>거울</label>
+  <button id="btnTest">⏱ 30초 측정</button>
+  <button id="btnFull">⛶</button>
+  <span id="status">대기 중</span>
+</header>
+
+<section id="panels"></section>
+
+<section id="stage">
+  <canvas id="view"></canvas>
+  <div id="msg">
+    <div>📷 <b>카메라 시작</b>을 눌러주세요</div>
+    <div class="small">태블릿을 가로로 세우고 2.5~3m 떨어져서, 빨간 박스와 파란 박스에 한 명씩 서 주세요.<br>머리부터 발끝까지 화면에 다 나와야 정확해요.</div>
+  </div>
+  <div id="result"><div class="card">
+    <h2>⏱ 30초 측정 결과</h2>
+    <div class="row">
+      <div class="col r"><div>빨강</div><div class="n" id="resR">0</div><div id="resR2"></div></div>
+      <div class="col b"><div>파랑</div><div class="n" id="resB">0</div><div id="resB2"></div></div>
+    </div>
+    <p>직접 센 횟수와 비교해 보세요.<br>너무 적게 세면 감도를 올리고, 너무 많이 세면 내리세요.</p>
+    <button id="btnClose">닫기</button>
+  </div></div>
+</section>
+
+<video id="video" playsinline muted></video>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+
+const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODELS = {
+  lite: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+  full: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+};
+const GRADE_SENS = { '12': 8, '34': 6, '56': 5 };
+const POINTS = [
+  { key: 'nose', idx: [0], w: 1 },
+  { key: 'sh', idx: [11, 12], w: 1.5 },
+  { key: 'hip', idx: [23, 24], w: 2 },
+  { key: 'ank', idx: [27, 28], w: 1 },
+];
+const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+
+const $ = s => document.querySelector(s);
+const video = $('#video'), view = $('#view'), vctx = view.getContext('2d');
+const statusEl = $('#status'), msgEl = $('#msg');
+
+// ───────────────────────── 점프 감지기 ─────────────────────────
+class Player {
+  constructor(id, name, color) {
+    this.id = id; this.name = name; this.color = color; this.sens = 6;
+    this.motion = [];
+    this.reset();
+  }
+  reset() {
+    this.buf = []; this.count = 0; this.state = 'down'; this.upT = 0; this.lastJumpT = -99;
+    this.jumpTimes = []; this.bases = {}; this.scale = null; this.sm = null; this.lastT = null;
+    this.present = false; this.lastSeen = -99; this.lms = null;
+    this.amp = 0; this.rateAC = 0; this.confAC = 0; this.rateIv = 0; this.rate = 0; this.peak = 0; this.flash = 0;
+  }
+  resetCount() { this.count = 0; this.jumpTimes = []; this.peak = 0; this.lastJumpT = -99; }
+  clearTracking() { this.bases = {}; this.sm = null; this.scale = null; this.state = 'down'; this.lastT = null; this.lms = null; }
+  get minAmp() { return 0.0872 - this.sens * 0.0072; } // 몸통 길이 대비 최소 진폭 (감도 1=0.08, 6=0.044, 10=0.015)
+
+  miss(t) {
+    if (this.present && t - this.lastSeen > 0.5) { this.present = false; this.clearTracking(); }
+    this.updateRate(t);
+  }
+
+  feed(t, lms, vw, vh) {
+    this.present = true; this.lastSeen = t; this.lms = lms;
+    const ok = p => p && p.y > -0.05 && p.y < 1.05 && (p.visibility === undefined || p.visibility === 0 || p.visibility > 0.35);
+    const sh = mid(lms[11], lms[12]), hp = mid(lms[23], lms[24]);
+    const torso = Math.hypot((sh.x - hp.x) * vw, (sh.y - hp.y) * vh);
+    if (torso < 8) return;
+    this.scale = this.scale == null ? torso : this.scale * 0.92 + torso * 0.08;
+    const dt = this.lastT == null ? 0.033 : Math.min(0.2, t - this.lastT);
+    this.lastT = t;
+    const a = 1 - Math.exp(-dt / 0.8); // 기준선 시정수 0.8초
+
+    let sum = 0, wsum = 0;
+    for (const pt of POINTS) {
+      const ps = pt.idx.map(i => lms[i]);
+      if (!ps.every(ok)) continue;
+      const y = ps.reduce((s, p) => s + p.y, 0) / ps.length * vh;
+      let b = this.bases[pt.key];
+      if (!b || t - b.t > 0.4) { this.bases[pt.key] = { v: y, t }; continue; }
+      b.v += a * (y - b.v); b.t = t;
+      sum += pt.w * (-(y - b.v) / this.scale); wsum += pt.w;
+    }
+    if (!wsum) return;
+    const s = sum / wsum;
+    this.sm = this.sm == null ? s : this.sm + 0.75 * (s - this.sm);
+
+    // 최근 1.5초 진폭 → 적응형 임계값
+    let mx = -Infinity, mn = Infinity;
+    for (let i = this.buf.length - 1; i >= 0 && this.buf[i].t > t - 1.5; i--) {
+      mx = Math.max(mx, this.buf[i].s); mn = Math.min(mn, this.buf[i].s);
+    }
+    mx = Math.max(mx, this.sm); mn = Math.min(mn, this.sm);
+    const amp = mx - mn, md = (mx + mn) / 2;
+    const hi = md + amp * 0.2, lo = md - amp * 0.2;
+    const active = amp >= this.minAmp;
+    this.amp = amp;
+
+    let jump = false;
+    if (this.state === 'down') {
+      if (active && this.sm > hi) { this.state = 'up'; this.upT = t; }
+    } else {
+      if (this.sm < lo) {
+        this.state = 'down';
+        if (active && t - this.lastJumpT > 0.15) {
+          jump = true; this.count++; this.lastJumpT = t; this.flash = 1;
+          this.jumpTimes.push(t); if (this.jumpTimes.length > 8) this.jumpTimes.shift();
+        }
+      } else if (t - this.upT > 1.2) this.state = 'down';
+    }
+
+    this.buf.push({ t, s: this.sm, hi, lo, active, jump });
+    while (this.buf.length && this.buf[0].t < t - 5) this.buf.shift();
+    this.updateRate(t);
+  }
+
+  updateRate(t) {
+    // 1) 점프 간격 중앙값
+    const jt = this.jumpTimes, ivs = [];
+    for (let i = 1; i < jt.length; i++) ivs.push(jt[i] - jt[i - 1]);
+    const med = ivs.length ? ivs.slice().sort((a, b) => a - b)[ivs.length >> 1] : 0;
+    const since = t - this.lastJumpT;
+    this.rateIv = (med && since < Math.max(1.2, med * 2)) ? 1 / med : 0;
+
+    // 2) 리듬 분석(자기상관)
+    const ac = autocorrRate(this.buf, t);
+    this.rateAC = ac.rate; this.confAC = ac.conf;
+
+    let target = 0;
+    if (this.present && since < 1.5 && this.amp >= this.minAmp) {
+      target = (ac.conf > 0.35 && ac.rate > 0) ? ac.rate : this.rateIv;
+    }
+    this.rate += (target - this.rate) * (target > this.rate ? 0.2 : 0.06);
+    if (this.rate < 0.05) this.rate = 0;
+    this.peak = Math.max(this.peak, this.rate * 60);
+  }
+}
+
+function mid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+function autocorrRate(buf, t) {
+  const fs = 30, T = 2.5, t0 = t - T;
+  let k = 0; while (k < buf.length && buf[k].t < t0) k++;
+  const pts = buf.slice(Math.max(0, k - 1));
+  if (pts.length < 20 || pts[0].t > t0 + 0.3) return { rate: 0, conf: 0 };
+  const n = Math.floor(T * fs), x = new Float32Array(n);
+  let j = 0, mean = 0;
+  for (let i = 0; i < n; i++) {
+    const ti = t0 + i / fs;
+    while (j < pts.length - 2 && pts[j + 1].t < ti) j++;
+    const p = pts[j], q = pts[j + 1];
+    const u = Math.min(1, Math.max(0, (ti - p.t) / ((q.t - p.t) || 1)));
+    x[i] = p.s + (q.s - p.s) * u; mean += x[i];
+  }
+  mean /= n; for (let i = 0; i < n; i++) x[i] -= mean;
+  const minL = 4, maxL = 33, r = new Float32Array(maxL + 2);
+  let best = 0;
+  for (let L = minL; L <= maxL + 1; L++) {
+    let s = 0, a = 0, b = 0;
+    for (let i = 0; i + L < n; i++) { s += x[i] * x[i + L]; a += x[i] * x[i]; b += x[i + L] * x[i + L]; }
+    r[L] = (a && b) ? s / Math.sqrt(a * b) : 0;
+    if (L <= maxL) best = Math.max(best, r[L]);
+  }
+  if (best < 0.3) return { rate: 0, conf: best };
+  for (let L = minL + 1; L <= maxL; L++) {
+    if (r[L] >= r[L - 1] && r[L] >= r[L + 1] && r[L] >= best * 0.8) {
+      const d = r[L - 1] - 2 * r[L] + r[L + 1];
+      const off = d ? 0.5 * (r[L - 1] - r[L + 1]) / d : 0;
+      return { rate: fs / (L + off), conf: r[L] };
+    }
+  }
+  return { rate: 0, conf: best };
+}
+
+// ───────────────────────── UI 패널 ─────────────────────────
+const players = [new Player(0, '빨강', '#ff4d5a'), new Player(1, '파랑', '#3d8bff')];
+const panels = $('#panels');
+players.forEach((p, i) => {
+  const el = document.createElement('div');
+  el.className = 'panel ' + (i ? 'blue' : 'red');
+  el.innerHTML = `
+    <div class="info">
+      <div class="tagrow"><span class="tag">${p.name}</span><span class="seen">● 인식 안 됨</span></div>
+      <div class="count"><span class="cnt">0</span><small> 회</small></div>
+      <div class="stat">속도 <b class="jpm">0</b> 회/분 · 최고 <b class="pk">0</b></div>
+      <div class="stat">진폭 <b class="amp">0.00</b> / 기준 <b class="min">0.00</b></div>
+      <div class="ctrl">
+        <select class="grade"><option value="12">1~2학년</option><option value="34" selected>3~4학년</option><option value="56">5~6학년</option></select>
+        감도 <input type="range" class="sens" min="1" max="10" step="1" value="6"><span class="sv">6</span>
+        <button class="rst">초기화</button>
+      </div>
+    </div>
+    <canvas class="graph"></canvas>`;
+  panels.appendChild(el);
+  p.el = {
+    root: el, seen: el.querySelector('.seen'), cnt: el.querySelector('.cnt'), jpm: el.querySelector('.jpm'),
+    pk: el.querySelector('.pk'), amp: el.querySelector('.amp'), min: el.querySelector('.min'),
+    sens: el.querySelector('.sens'), sv: el.querySelector('.sv'), graph: el.querySelector('.graph'),
+  };
+  const setSens = v => { p.sens = +v; p.el.sens.value = v; p.el.sv.textContent = v; };
+  p.el.sens.oninput = e => setSens(e.target.value);
+  el.querySelector('.grade').onchange = e => setSens(GRADE_SENS[e.target.value]);
+  el.querySelector('.rst').onclick = () => p.resetCount();
+});
+
+// ───────────────────────── 카메라 / 모델 ─────────────────────────
+let stream = null, landmarker = null, loadingModel = false, running = false, lastVideoTime = -1;
+let facing = 'user', wakeLock = null;
+
+async function loadModel(kind) {
+  loadingModel = true; statusEl.textContent = 'AI 모델 불러오는 중…';
+  try {
+    const vision = await FilesetResolver.forVisionTasks(WASM);
+    const opts = delegate => ({
+      baseOptions: { modelAssetPath: MODELS[kind], delegate },
+      runningMode: 'VIDEO', numPoses: 2,
+      minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    let lm;
+    try { lm = await PoseLandmarker.createFromOptions(vision, opts('GPU')); }
+    catch (e) { console.warn('GPU 실패, CPU 사용', e); lm = await PoseLandmarker.createFromOptions(vision, opts('CPU')); }
+    if (landmarker) landmarker.close();
+    landmarker = lm; statusEl.textContent = '인식 준비 완료';
+  } catch (e) {
+    console.error(e); statusEl.textContent = '모델 로딩 실패 (인터넷 확인)';
+  }
+  loadingModel = false;
+}
+
+async function startCamera(deviceId) {
+  if (!window.isSecureContext) {
+    showMsg('⚠️ 카메라를 쓸 수 없어요', 'https:// 주소이거나 PC에서 파일로 직접 열어야 카메라가 켜집니다.');
+    return;
+  }
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  const [w, h] = $('#selRes').value.split('x').map(Number);
+  const v = { width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: 30 } };
+  if (deviceId) v.deviceId = { exact: deviceId }; else v.facingMode = facing;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: v });
+  } catch (e) {
+    console.error(e); showMsg('⚠️ 카메라를 켤 수 없어요', '브라우저의 카메라 권한을 허용했는지 확인해 주세요. (' + e.name + ')');
+    return;
+  }
+  video.srcObject = stream; await video.play();
+  const track = stream.getVideoTracks()[0], st = track.getSettings();
+  const isBack = st.facingMode === 'environment' || /back|rear|후면/i.test(track.label);
+  $('#chkMirror').checked = !isBack;
+  await fillCameras(st.deviceId);
+  hideMsg(); running = true;
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {}
+  if (!landmarker && !loadingModel) loadModel($('#selModel').value);
+}
+
+async function fillCameras(current) {
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  const sel = $('#selCam'); sel.innerHTML = '';
+  devs.forEach((d, i) => {
+    const o = document.createElement('option'); o.value = d.deviceId;
+    o.textContent = d.label || ('카메라 ' + (i + 1)); if (d.deviceId === current) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function showMsg(a, b) { msgEl.style.display = 'flex'; msgEl.innerHTML = `<div>${a}</div><div class="small">${b || ''}</div>`; }
+function hideMsg() { msgEl.style.display = 'none'; msgEl.innerHTML = ''; }
+
+$('#btnStart').onclick = () => startCamera($('#selCam').value || undefined);
+$('#selCam').onchange = e => startCamera(e.target.value);
+$('#selRes').onchange = () => stream && startCamera($('#selCam').value || undefined);
+$('#selModel').onchange = e => loadModel(e.target.value);
+$('#btnFull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && running) { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {} }
+});
+
+// ───────────────────────── 움직임 에너지(보조 신호) ─────────────────────────
+const mcv = document.createElement('canvas'); mcv.width = 64; mcv.height = 48;
+const mctx = mcv.getContext('2d', { willReadFrequently: true });
+let prevGray = null;
+function motionEnergy() {
+  const mirror = $('#chkMirror').checked;
+  mctx.save();
+  if (mirror) { mctx.translate(64, 0); mctx.scale(-1, 1); }
+  mctx.drawImage(video, 0, 0, 64, 48); mctx.restore();
+  const d = mctx.getImageData(0, 0, 64, 48).data;
+  const g = new Uint8Array(64 * 48);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
+  const out = [0, 0];
+  if (prevGray) {
+    for (let y = 2; y < 46; y++) for (let x = 0; x < 64; x++) {
+      const diff = Math.abs(g[y * 64 + x] - prevGray[y * 64 + x]);
+      if (diff > 18) out[x < 32 ? 0 : 1] += diff;
+    }
+  }
+  prevGray = g;
+  return out.map(v => v / (32 * 44 * 255));
+}
+
+// ───────────────────────── 30초 측정 ─────────────────────────
+let audioCtx = null;
+const ac = () => (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
+function beep(f = 880, dur = 0.12) {
+  const a = ac(), o = a.createOscillator(), g = a.createGain();
+  o.frequency.value = f; g.gain.setValueAtTime(0.3, a.currentTime); g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+  o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+}
+function gunshot() {
+  const a = ac(), len = Math.floor(a.sampleRate * 0.6), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
+  const src = a.createBufferSource(); src.buffer = buf;
+  const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2500;
+  const g = a.createGain(); g.gain.value = 1.4;
+  src.connect(lp).connect(g).connect(a.destination); src.start();
+}
+
+let test = null;
+$('#btnTest').onclick = async () => {
+  if (!running || test) return;
+  ac().resume();
+  test = { phase: 'count' };
+  for (const n of [3, 2, 1]) {
+    msgEl.style.display = 'flex'; msgEl.innerHTML = `<div class="big">${n}</div>`; beep(660); await sleep(1000);
+  }
+  gunshot(); players.forEach(p => p.resetCount());
+  test = { phase: 'run', end: performance.now() / 1000 + 30 };
+};
+$('#btnClose').onclick = () => { $('#result').style.display = 'none'; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function updateTest(t) {
+  if (!test || test.phase !== 'run') return;
+  const left = test.end - t;
+  if (left <= 0) {
+    test = null; hideMsg(); beep(440, 0.5);
+    const [r, b] = players;
+    $('#resR').textContent = r.count; $('#resB').textContent = b.count;
+    $('#resR2').textContent = `최고 ${Math.round(r.peak)}회/분`; $('#resB2').textContent = `최고 ${Math.round(b.peak)}회/분`;
+    $('#result').style.display = 'flex';
+  } else {
+    msgEl.style.display = 'flex'; msgEl.innerHTML = `<div class="big" style="font-size:64px;opacity:.85">${Math.ceil(left)}</div>`;
+  }
+}
+
+// ───────────────────────── 그리기 ─────────────────────────
+let fps = 0, fpsN = 0, fpsT = 0;
+
+function fitCanvas(cv) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  return dpr;
+}
+
+function videoRect() {
+  const W = view.width, H = view.height, vw = video.videoWidth || 4, vh = video.videoHeight || 3;
+  const s = Math.min(W / vw, H / vh);
+  return { x: (W - vw * s) / 2, y: (H - vh * s) / 2, w: vw * s, h: vh * s };
+}
+
+function boxRect(r, i) {
+  return { x: r.x + r.w * (i ? 0.515 : 0.03), y: r.y + r.h * 0.04, w: r.w * 0.455, h: r.h * 0.92 };
+}
+
+function drawView() {
+  const dpr = fitCanvas(view);
+  const W = view.width, H = view.height;
+  vctx.fillStyle = '#1d1a24'; vctx.fillRect(0, 0, W, H);
+  const r = videoRect(), mirror = $('#chkMirror').checked;
+  if (video.readyState >= 2) {
+    vctx.save();
+    if (mirror) { vctx.translate(r.x + r.w, r.y); vctx.scale(-1, 1); vctx.drawImage(video, 0, 0, r.w, r.h); }
+    else vctx.drawImage(video, r.x, r.y, r.w, r.h);
+    vctx.restore();
+  }
+  players.forEach((p, i) => {
+    const b = boxRect(r, i);
+    p.flash *= 0.85;
+    if (p.present) { vctx.fillStyle = p.color + '22'; vctx.fillRect(b.x, b.y, b.w, b.h); }
+    vctx.lineWidth = (5 + p.flash * 10) * dpr; vctx.strokeStyle = p.color;
+    vctx.strokeRect(b.x, b.y, b.w, b.h);
+    // 라벨
+    vctx.font = `${16 * dpr}px Jua, sans-serif`;
+    const label = p.name + (p.present ? ' ✓' : '');
+    const lw = vctx.measureText(label).width + 20 * dpr;
+    vctx.fillStyle = p.color; roundRect(vctx, b.x + 8 * dpr, b.y + 8 * dpr, lw, 26 * dpr, 13 * dpr); vctx.fill();
+    vctx.fillStyle = '#fff'; vctx.textBaseline = 'middle'; vctx.fillText(label, b.x + 18 * dpr, b.y + 21 * dpr);
+    // 큰 숫자
+    vctx.font = `${Math.min(b.h * 0.22, 90 * dpr)}px Jua, sans-serif`; vctx.textAlign = 'right'; vctx.textBaseline = 'top';
+    vctx.lineWidth = 6 * dpr; vctx.strokeStyle = '#2b2020'; vctx.strokeText(p.count, b.x + b.w - 12 * dpr, b.y + 10 * dpr);
+    vctx.fillStyle = '#ffd23f'; vctx.fillText(p.count, b.x + b.w - 12 * dpr, b.y + 10 * dpr);
+    vctx.textAlign = 'left';
+    if (!p.present && running) {
+      vctx.font = `${18 * dpr}px Jua, sans-serif`; vctx.textAlign = 'center'; vctx.textBaseline = 'middle';
+      vctx.fillStyle = 'rgba(255,255,255,.85)'; vctx.fillText('박스 안에 서 주세요', b.x + b.w / 2, b.y + b.h / 2);
+      vctx.textAlign = 'left';
+    }
+    // 뼈대
+    if (p.present && p.lms) {
+      const P = k => { const l = p.lms[k]; return [r.x + (mirror ? 1 - l.x : l.x) * r.w, r.y + l.y * r.h]; };
+      vctx.strokeStyle = p.color; vctx.lineWidth = 4 * dpr; vctx.lineCap = 'round';
+      vctx.beginPath();
+      for (const [a, c] of BONES) { const A = P(a), C = P(c); vctx.moveTo(A[0], A[1]); vctx.lineTo(C[0], C[1]); }
+      vctx.stroke();
+      vctx.fillStyle = '#fff';
+      for (const k of [0, 11, 12, 23, 24, 27, 28]) { const A = P(k); vctx.beginPath(); vctx.arc(A[0], A[1], 4 * dpr, 0, 7); vctx.fill(); }
+    }
+  });
+}
+
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+
+function drawGraph(p, now) {
+  const cv = p.el.graph, dpr = fitCanvas(cv), ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height, T = 4, t0 = now - T;
+  ctx.clearRect(0, 0, W, H);
+  const X = t => (t - t0) / T * W;
+  // 움직임 에너지
+  const ms = p.motion.filter(m => m.t >= t0);
+  const mMax = Math.max(0.02, ...ms.map(m => m.m));
+  ctx.fillStyle = 'rgba(140,130,115,.18)'; ctx.beginPath(); ctx.moveTo(0, H);
+  ms.forEach(m => ctx.lineTo(X(m.t), H - m.m / mMax * H * 0.35)); ctx.lineTo(W, H); ctx.fill();
+
+  const pts = p.buf.filter(b => b.t >= t0);
+  let R = 0.12; pts.forEach(b => { R = Math.max(R, Math.abs(b.s) * 1.25); });
+  const Y = v => H / 2 - v / R * H * 0.45;
+  ctx.strokeStyle = '#e6dcc6'; ctx.lineWidth = 1 * dpr; ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+  // 임계값
+  ctx.setLineDash([4 * dpr, 4 * dpr]); ctx.strokeStyle = 'rgba(43,32,32,.35)';
+  for (const key of ['hi', 'lo']) {
+    ctx.beginPath(); let on = false;
+    pts.forEach(b => { if (!b.active) { on = false; return; } on ? ctx.lineTo(X(b.t), Y(b[key])) : ctx.moveTo(X(b.t), Y(b[key])); on = true; });
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // 점프 표시
+  pts.forEach(b => {
+    if (!b.jump) return;
+    ctx.strokeStyle = p.color + '66'; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(X(b.t), 0); ctx.lineTo(X(b.t), H); ctx.stroke();
+    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(X(b.t), 8 * dpr, 4 * dpr, 0, 7); ctx.fill();
+  });
+  // 신호
+  ctx.strokeStyle = p.color; ctx.lineWidth = 2.5 * dpr; ctx.beginPath();
+  pts.forEach((b, i) => i ? ctx.lineTo(X(b.t), Y(b.s)) : ctx.moveTo(X(b.t), Y(b.s)));
+  ctx.stroke();
+  ctx.fillStyle = '#8a7f73'; ctx.font = `${11 * dpr}px Jua, sans-serif`; ctx.textBaseline = 'top';
+  ctx.fillText(`몸 높이 변화 · 리듬 ${(p.rateAC * 60).toFixed(0)}/분 (신뢰 ${p.confAC.toFixed(2)}) · 간격 ${(p.rateIv * 60).toFixed(0)}/분`, 6 * dpr, 4 * dpr);
+}
+
+function updatePanels() {
+  players.forEach(p => {
+    p.el.seen.textContent = p.present ? '● 인식 중' : '● 인식 안 됨';
+    p.el.seen.classList.toggle('on', p.present);
+    p.el.cnt.textContent = p.count;
+    p.el.jpm.textContent = Math.round(p.rate * 60);
+    p.el.pk.textContent = Math.round(p.peak);
+    p.el.amp.textContent = p.amp.toFixed(2);
+    p.el.min.textContent = p.minAmp.toFixed(2);
+  });
+}
+
+// ───────────────────────── 메인 루프 ─────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+  const nowMs = performance.now(), t = nowMs / 1000;
+  if (running && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const m = motionEnergy();
+    players.forEach((p, i) => { p.motion.push({ t, m: m[i] }); while (p.motion.length && p.motion[0].t < t - 5) p.motion.shift(); });
+    if (landmarker) {
+      const res = landmarker.detectForVideo(video, nowMs);
+      assign(res, t);
+      fpsN++;
+    }
+  }
+  if (t - fpsT >= 1) {
+    fps = fpsN / (t - fpsT); fpsN = 0; fpsT = t;
+    if (landmarker && running) statusEl.textContent = `인식 중 · ${fps.toFixed(0)} FPS`;
+  }
+  updateTest(t);
+  drawView();
+  players.forEach(p => drawGraph(p, t));
+  updatePanels();
+}
+
+function assign(res, t) {
+  const mirror = $('#chkMirror').checked;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const cand = [[], []];
+  for (const lms of res.landmarks || []) {
+    const hx = (lms[23].x + lms[24].x) / 2, dx = mirror ? 1 - hx : hx;
+    const side = dx < 0.5 ? 0 : 1;
+    cand[side].push({ lms, d: Math.abs(dx - (side ? 0.745 : 0.255)) });
+  }
+  players.forEach((p, i) => {
+    if (cand[i].length) { cand[i].sort((a, b) => a.d - b.d); p.feed(t, cand[i][0].lms, vw, vh); }
+    else p.miss(t);
+  });
+}
+
+window.__debug = { Player, players }; // 개발자 점검용
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
