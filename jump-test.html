@@ -59,6 +59,7 @@
   .seen.on { color: #2f9e44; }
   .mode { font-size: 12px; padding: 0 8px; border-radius: 99px; background: #eee3cc; }
   .mode.alt { background: #e3d4ff; }
+  .mode.walk { background: #ffd8a8; }
   .count { font-size: 44px; line-height: 1; }
   .count small { font-size: 16px; color: var(--muted); }
   .stat { font-size: 13px; color: var(--muted); white-space: nowrap; }
@@ -115,6 +116,7 @@
   </select>
   <label class="chk"><input type="checkbox" id="chkMirror" checked>거울</label>
   <label class="chk"><input type="checkbox" id="chkGraph" checked>그래프</label>
+  <label class="chk" title="걸어 다니거나 제자리걸음일 때는 세지 않아요"><input type="checkbox" id="chkWalk" checked>걷기 거르기</label>
   <button id="btnTest">⏱ 30초 측정</button>
   <button id="btnFull">⛶</button>
   <span id="status">대기 중</span>
@@ -163,6 +165,13 @@ const POINTS = [
   { key: 'hip', idx: [23, 24], w: 2 },
   { key: 'ank', idx: [27, 28], w: 1 },
 ];
+// 걷기 거르기
+const UPPER = new Set(['nose', 'sh', 'hip']); // 상체만 따로 본 오르내림 (발 들기와 무관)
+const UB_K = 0.5;          // 상체가 감도 기준의 50% 이상 들썩여야 점프로 인정
+const MOVE_WIN = 0.8;      // 이동 판단 구간(초)
+const MOVE_DX = 0.25;      // 그 사이 엉덩이가 몸통 길이의 25% 넘게 옆으로 움직이면 이동
+const MOVE_DS = 0.1;       // 몸 크기가 10% 넘게 변하면 앞뒤 이동
+const MOVE_HOLD = 0.8;     // 멈춘 뒤 이만큼은 계속 이동 중으로 봄
 const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
 
 const $ = s => document.querySelector(s);
@@ -215,18 +224,19 @@ class Channel {
 class Player {
   constructor(id, name, color) {
     this.id = id; this.name = name; this.color = color; this.sens = 6;
-    this.motion = []; this.bob = new Channel('bob'); this.alt = new Channel('alt');
+    this.motion = []; this.bob = new Channel('bob'); this.alt = new Channel('alt'); this.ub = new Channel('bob');
     this.reset();
   }
   reset() {
-    this.bob.reset(); this.alt.reset();
+    this.bob.reset(); this.alt.reset(); this.ub.reset();
+    this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false;
     this.count = 0; this.jumpTimes = []; this.events = []; this.lastJumpT = -99; this.primary = 'bob';
     this.bases = {}; this.scale = null; this.lastT = null;
     this.present = false; this.lastSeen = -99; this.lms = null;
     this.rate = 0; this.peak = 0; this.flash = 0;
   }
   resetCount() { this.count = 0; this.jumpTimes = []; this.events = []; this.peak = 0; this.lastJumpT = -99; }
-  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); }
+  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); this.ub.reset(); this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false; }
   get minAmp() { return 0.0872 - this.sens * 0.0072; } // 몸통 길이 대비 (감도 1=0.08, 6=0.044, 10=0.015)
   get minAmpAlt() { return this.minAmp * 1.6; }
 
@@ -247,7 +257,7 @@ class Player {
     const a = 1 - Math.exp(-dt / 0.8);
 
     // 1) 몸 전체 오르내림 (부위별 기준선을 따로 두어 부위가 잠깐 사라져도 튀지 않게)
-    let sum = 0, wsum = 0;
+    let sum = 0, wsum = 0, usum = 0, uw = 0;
     for (const pt of POINTS) {
       const ps = pt.idx.map(i => lms[i]);
       if (!ps.every(ok)) continue;
@@ -255,9 +265,23 @@ class Player {
       let b = this.bases[pt.key];
       if (!b || t - b.t > 0.4) { this.bases[pt.key] = { v: y, t }; continue; }
       b.v += a * (y - b.v); b.t = t;
-      sum += pt.w * (-(y - b.v) / this.scale); wsum += pt.w;
+      const v = -(y - b.v) / this.scale;
+      sum += pt.w * v; wsum += pt.w;
+      if (UPPER.has(pt.key)) { usum += pt.w * v; uw += pt.w; }
     }
     const evB = wsum ? this.bob.feed(t, sum / wsum, dt, this.minAmp, false) : false;
+    if (uw) this.ub.feed(t, usum / uw, dt, this.minAmp, false);
+
+    // 1-2) 걸어서 이동 중인지 (엉덩이 좌우 이동, 몸 크기 변화 = 앞뒤 이동)
+    this.trk.push({ t, x: (lms[23].x + lms[24].x) / 2 * vw, s: torso });
+    while (this.trk.length && this.trk[0].t < t - MOVE_WIN - 0.3) this.trk.shift();
+    const avg = arr => ({ x: arr.reduce((a, c) => a + c.x, 0) / arr.length, s: arr.reduce((a, c) => a + c.s, 0) / arr.length });
+    const now = this.trk.filter(e => e.t > t - 0.15), old = this.trk.filter(e => e.t <= t - MOVE_WIN && e.t > t - MOVE_WIN - 0.15);
+    if (now.length && old.length) {
+      const A = avg(now), B = avg(old);
+      if (Math.abs(A.x - B.x) / this.scale > MOVE_DX || Math.abs(Math.log(A.s / B.s)) > MOVE_DS) this.moveUntil = t + MOVE_HOLD;
+    }
+    this.moving = t < this.moveUntil;
 
     // 2) 왼발-오른발 높이 차이 (발목 + 무릎)
     let evA = false;
@@ -272,7 +296,10 @@ class Player {
     if (this.primary === 'bob' && sa >= 1 && sa > sb * 1.3) this.primary = 'alt';
     else if (this.primary === 'alt' && (sb >= 1 && sb > sa * 1.3 || sa === 0)) this.primary = 'bob';
 
-    const evt = this.primary === 'bob' ? evB : evA;
+    let evt = this.primary === 'bob' ? evB : evA;
+    // 걷기 거르기: 걸어서 이동 중이거나, 발만 움직이고 상체가 들썩이지 않으면(제자리걸음) 세지 않음
+    this.walkBlock = filterWalk && (this.moving || this.ub.amp < this.minAmp * UB_K);
+    if (this.walkBlock) evt = false;
     if (evt && t - this.lastJumpT > 0.12) {
       this.count++; this.lastJumpT = t; this.flash = 1;
       this.jumpTimes.push(t); if (this.jumpTimes.length > 8) this.jumpTimes.shift();
@@ -345,7 +372,7 @@ players.forEach((p, i) => {
       <div class="tagrow"><span class="tag">${p.name}</span><span class="seen">● 인식 안 됨</span><span class="mode">모아뛰기</span></div>
       <div class="count"><span class="cnt">0</span><small> 회</small></div>
       <div class="stat">속도 <b class="jpm">0</b> 회/분 · 최고 <b class="pk">0</b></div>
-      <div class="stat">몸 <b class="ampB">0.00</b>/<b class="minB">0.00</b> · 발 <b class="ampA">0.00</b>/<b class="minA">0.00</b></div>
+      <div class="stat">몸 <b class="ampB">0.00</b>/<b class="minB">0.00</b> · 발 <b class="ampA">0.00</b>/<b class="minA">0.00</b> · 상체 <b class="ampU">0.00</b>/<b class="minU">0.00</b></div>
       <div class="ctrl">
         <select class="grade"><option value="12">1~2학년</option><option value="34" selected>3~4학년</option><option value="56">5~6학년</option></select>
         감도 <input type="range" class="sens" min="1" max="10" step="1" value="6"><span class="sv">6</span>
@@ -357,7 +384,7 @@ players.forEach((p, i) => {
   const q = s => el.querySelector(s);
   p.el = {
     seen: q('.seen'), mode: q('.mode'), cnt: q('.cnt'), jpm: q('.jpm'), pk: q('.pk'),
-    ampB: q('.ampB'), minB: q('.minB'), ampA: q('.ampA'), minA: q('.minA'),
+    ampB: q('.ampB'), minB: q('.minB'), ampA: q('.ampA'), minA: q('.minA'), ampU: q('.ampU'), minU: q('.minU'),
     sens: q('.sens'), sv: q('.sv'), graph: q('.graph'),
   };
   const setSens = v => { p.sens = +v; p.el.sens.value = v; p.el.sv.textContent = v; };
@@ -369,7 +396,7 @@ players.forEach((p, i) => {
 // ───────────────────────── 인식 엔진 ─────────────────────────
 let engine = null, engineKind = null, loading = false;
 let stream = null, running = false, lastVideoTime = -1, busy = false, inferMs = 0;
-let facing = 'user', wakeLock = null;
+let facing = 'user', wakeLock = null, filterWalk = true;
 
 async function makeMP(model, numPoses) {
   const vision = await FilesetResolver.forVisionTasks(WASM);
@@ -509,6 +536,7 @@ $('#selCam').onchange = e => startCamera(e.target.value);
 $('#selRes').onchange = () => stream && startCamera($('#selCam').value || undefined);
 $('#selEngine').onchange = () => running && loadEngine();
 $('#selModel').onchange = () => running && loadEngine();
+$('#chkWalk').onchange = e => { filterWalk = e.target.checked; };
 $('#chkGraph').onchange = e => document.body.classList.toggle('nograph', !e.target.checked);
 $('#btnFull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
 document.addEventListener('visibilitychange', async () => {
@@ -669,13 +697,16 @@ function updatePanels() {
   players.forEach(p => {
     p.el.seen.textContent = p.present ? '● 인식 중' : '● 인식 안 됨';
     p.el.seen.classList.toggle('on', p.present);
-    p.el.mode.textContent = p.primary === 'alt' ? '번갈아뛰기' : '모아뛰기';
-    p.el.mode.classList.toggle('alt', p.primary === 'alt');
+    const walking = p.present && p.walkBlock && (p.moving || p.alt.active || p.bob.active);
+    p.el.mode.textContent = walking ? (p.moving ? '🚶 이동 중' : '🚶 걷기') : p.primary === 'alt' ? '번갈아뛰기' : '모아뛰기';
+    p.el.mode.classList.toggle('alt', !walking && p.primary === 'alt');
+    p.el.mode.classList.toggle('walk', walking);
     p.el.cnt.textContent = p.count;
     p.el.jpm.textContent = Math.round(p.rate * 60);
     p.el.pk.textContent = Math.round(p.peak);
     p.el.ampB.textContent = p.bob.amp.toFixed(2); p.el.minB.textContent = p.minAmp.toFixed(2);
     p.el.ampA.textContent = p.alt.amp.toFixed(2); p.el.minA.textContent = p.minAmpAlt.toFixed(2);
+    p.el.ampU.textContent = p.ub.amp.toFixed(2); p.el.minU.textContent = (p.minAmp * UB_K).toFixed(2);
   });
 }
 
