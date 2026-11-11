@@ -62,7 +62,7 @@
   .mode.walk { background: #ffd8a8; }
   .count { font-size: 44px; line-height: 1; }
   .count small { font-size: 16px; color: var(--muted); }
-  .stat { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .stat { font-size: 13px; color: var(--muted); }
   .stat b { color: var(--ink); font-weight: 400; font-size: 15px; }
   .ctrl { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: auto; flex-wrap: wrap; }
   .ctrl select, .ctrl button { font-size: 12px; padding: 2px 6px; box-shadow: 0 2px 0 var(--ink); }
@@ -172,6 +172,14 @@ const MOVE_WIN = 0.8;      // 이동 판단 구간(초)
 const MOVE_DX = 0.25;      // 그 사이 엉덩이가 몸통 길이의 25% 넘게 옆으로 움직이면 이동
 const MOVE_DS = 0.1;       // 몸 크기가 10% 넘게 변하면 앞뒤 이동
 const MOVE_HOLD = 0.8;     // 멈춘 뒤 이만큼은 계속 이동 중으로 봄
+// 세기 조건
+const BODY_PTS = [0, 11, 12, 23, 24, 27, 28]; // 코·어깨·엉덩이·발목이 다 보여야 함
+const BOX_X = [[0.03, 0.485], [0.515, 0.97]]; // 화면(거울 적용) 기준 빨강/파랑 박스 가로 범위
+const BOX_TOL = 0.03;      // 박스 경계 여유
+const WARMUP = 2;          // 전신이 박스 안에 들어온 뒤 이만큼(초)은 세지 않음
+const LOST_GRACE = 0.5;    // 잠깐(0.5초 이하) 발이 안 잡혀도 계속 셈
+const MIN_IV = { bob: 0.25, alt: 0.17 }; // 이보다 짧은 간격의 점프는 버림 (모아 240회/분, 번갈아 350회/분)
+const MAX_RATE = 5;        // 속도 표시 상한 (초당 5회 = 300회/분)
 const BONES = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
 
 const $ = s => document.querySelector(s);
@@ -230,24 +238,35 @@ class Player {
   reset() {
     this.bob.reset(); this.alt.reset(); this.ub.reset();
     this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false;
-    this.count = 0; this.jumpTimes = []; this.events = []; this.lastJumpT = -99; this.primary = 'bob';
+    this.count = 0; this.jumpTimes = []; this.events = []; this.lastJumpT = -99; this.lastRawT = -99; this.primary = 'bob';
     this.bases = {}; this.scale = null; this.lastT = null;
     this.present = false; this.lastSeen = -99; this.lms = null;
+    this.okSince = null; this.badSince = null; this.state = 'none';
     this.rate = 0; this.peak = 0; this.flash = 0;
   }
   resetCount() { this.count = 0; this.jumpTimes = []; this.events = []; this.peak = 0; this.lastJumpT = -99; }
-  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); this.ub.reset(); this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false; }
+  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); this.ub.reset(); this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false; this.okSince = null; this.badSince = null; this.state = 'none'; }
   get minAmp() { return 0.0872 - this.sens * 0.0072; } // 몸통 길이 대비 (감도 1=0.08, 6=0.044, 10=0.015)
   get minAmpAlt() { return this.minAmp * 1.6; }
 
   miss(t) {
     if (this.present && t - this.lastSeen > 0.5) { this.present = false; this.clearTracking(); }
+    if (!this.present) this.state = 'none';
     this.updateRate(t);
   }
 
   feed(t, lms, vw, vh) {
     this.present = true; this.lastSeen = t; this.lms = lms;
     const ok = p => p && p.y > -0.05 && p.y < 1.05 && (p.visibility === undefined || p.visibility === 0 || p.visibility > 0.35);
+
+    // 0) 전신이 자기 박스 안에 보이는지 → 들어온 뒤 WARMUP초 지나야 셈
+    const mirror = $('#chkMirror').checked, [bx0, bx1] = BOX_X[this.id];
+    const inBox = l => { const x = mirror ? 1 - l.x : l.x; return x > bx0 - BOX_TOL && x < bx1 + BOX_TOL && l.y > -0.02 && l.y < 1.02; };
+    const bodyOk = BODY_PTS.every(i => ok(lms[i]) && inBox(lms[i]));
+    if (bodyOk) { this.badSince = null; if (this.okSince == null) this.okSince = t; }
+    else { if (this.badSince == null) this.badSince = t; if (t - this.badSince > LOST_GRACE) this.okSince = null; }
+    const ready = this.okSince != null && t - this.okSince >= WARMUP;
+    this.state = this.okSince == null ? 'body' : ready ? 'ok' : 'warm';
     const sh = mid(lms[11], lms[12]), hp = mid(lms[23], lms[24]);
     const torso = Math.hypot((sh.x - hp.x) * vw, (sh.y - hp.y) * vh);
     if (torso < 8) return;
@@ -300,7 +319,11 @@ class Player {
     // 걷기 거르기: 걸어서 이동 중이거나, 발만 움직이고 상체가 들썩이지 않으면(제자리걸음) 세지 않음
     this.walkBlock = filterWalk && (this.moving || this.ub.amp < this.minAmp * UB_K);
     if (this.walkBlock) evt = false;
-    if (evt && t - this.lastJumpT > 0.12) {
+    if (this.state !== 'ok') evt = false;
+    // 사람이 낼 수 없는 속도: 직전 신호(센 것이든 버린 것이든)와 간격이 너무 짧으면 버림
+    //  → 계속 떨리는 잡음은 한 번도 세지 않고, 진짜 점프 사이에 낀 헛신호만 걸러짐
+    if (evt) { const tooFast = t - this.lastRawT < MIN_IV[this.primary]; this.lastRawT = t; if (tooFast) evt = false; }
+    if (evt) {
       this.count++; this.lastJumpT = t; this.flash = 1;
       this.jumpTimes.push(t); if (this.jumpTimes.length > 8) this.jumpTimes.shift();
       this.events.push(t); while (this.events.length && this.events[0] < t - 5) this.events.shift();
@@ -318,7 +341,8 @@ class Player {
     this.rateIv = (med && since < Math.max(1.2, med * 2)) ? 1 / med : 0;
     const ch = this.channel;
     let target = 0;
-    if (this.present && since < 1.5 && ch.active) target = (ch.ac.conf > 0.35 && ch.ac.rate > 0) ? ch.stepRate() : this.rateIv;
+    if (this.present && this.state === 'ok' && since < 1.5 && ch.active) target = (ch.ac.conf > 0.35 && ch.ac.rate > 0) ? ch.stepRate() : this.rateIv;
+    target = Math.min(target, MAX_RATE);
     this.rate += (target - this.rate) * (target > this.rate ? 0.2 : 0.06);
     if (this.rate < 0.05) this.rate = 0;
     this.peak = Math.max(this.peak, this.rate * 60);
@@ -372,7 +396,7 @@ players.forEach((p, i) => {
       <div class="tagrow"><span class="tag">${p.name}</span><span class="seen">● 인식 안 됨</span><span class="mode">모아뛰기</span></div>
       <div class="count"><span class="cnt">0</span><small> 회</small></div>
       <div class="stat">속도 <b class="jpm">0</b> 회/분 · 최고 <b class="pk">0</b></div>
-      <div class="stat">몸 <b class="ampB">0.00</b>/<b class="minB">0.00</b> · 발 <b class="ampA">0.00</b>/<b class="minA">0.00</b> · 상체 <b class="ampU">0.00</b>/<b class="minU">0.00</b></div>
+      <div class="stat">몸 <b class="ampB">0.00</b>/<b class="minB">0.00</b> · 발 <b class="ampA">0.00</b>/<b class="minA">0.00</b> · <span style="white-space:nowrap">상체 <b class="ampU">0.00</b>/<b class="minU">0.00</b></span></div>
       <div class="ctrl">
         <select class="grade"><option value="12">1~2학년</option><option value="34" selected>3~4학년</option><option value="56">5~6학년</option></select>
         감도 <input type="range" class="sens" min="1" max="10" step="1" value="6"><span class="sv">6</span>
@@ -623,7 +647,7 @@ function drawView() {
     vctx.lineWidth = (5 + p.flash * 10) * dpr; vctx.strokeStyle = p.color;
     vctx.strokeRect(b.x, b.y, b.w, b.h);
     vctx.font = `${16 * dpr}px Jua, sans-serif`;
-    const label = p.name + (p.present ? (p.primary === 'alt' ? ' ✓ 번갈아' : ' ✓') : '');
+    const label = p.name + (p.state === 'ok' ? (p.primary === 'alt' ? ' ✓ 번갈아' : ' ✓') : '');
     const lw = vctx.measureText(label).width + 20 * dpr;
     vctx.fillStyle = p.color; roundRect(vctx, b.x + 8 * dpr, b.y + 8 * dpr, lw, 26 * dpr, 13 * dpr); vctx.fill();
     vctx.fillStyle = '#fff'; vctx.textBaseline = 'middle'; vctx.fillText(label, b.x + 18 * dpr, b.y + 21 * dpr);
@@ -631,9 +655,16 @@ function drawView() {
     vctx.lineWidth = 6 * dpr; vctx.strokeStyle = '#2b2020'; vctx.strokeText(p.count, b.x + b.w - 12 * dpr, b.y + 10 * dpr);
     vctx.fillStyle = '#ffd23f'; vctx.fillText(p.count, b.x + b.w - 12 * dpr, b.y + 10 * dpr);
     vctx.textAlign = 'left';
-    if (!p.present && running) {
-      vctx.font = `${18 * dpr}px Jua, sans-serif`; vctx.textAlign = 'center'; vctx.textBaseline = 'middle';
-      vctx.fillStyle = 'rgba(255,255,255,.85)'; vctx.fillText('박스 안에 서 주세요', b.x + b.w / 2, b.y + b.h / 2);
+    if (running && p.state !== 'ok') {
+      const warm = p.state === 'warm';
+      const txt = warm ? `준비… ${Math.max(1, Math.ceil(WARMUP - (performance.now() / 1000 - p.okSince)))}`
+        : p.state === 'body' ? '머리부터 발끝까지\n박스 안에 서 주세요' : '박스 안에 서 주세요';
+      const lines = txt.split('\n'), fs = Math.min(warm ? 40 : 18, b.w / dpr / 11) * dpr, lh = fs * 1.35;
+      vctx.font = `${fs}px Jua, sans-serif`; vctx.textAlign = 'center'; vctx.textBaseline = 'middle';
+      const tw = Math.max(...lines.map(l => vctx.measureText(l).width)), th = lh * lines.length;
+      vctx.fillStyle = 'rgba(0,0,0,.45)'; roundRect(vctx, b.x + b.w / 2 - tw / 2 - 12 * dpr, b.y + b.h / 2 - th / 2 - 6 * dpr, tw + 24 * dpr, th + 12 * dpr, 12 * dpr); vctx.fill();
+      vctx.fillStyle = warm ? '#ffd23f' : 'rgba(255,255,255,.95)';
+      lines.forEach((l, k) => vctx.fillText(l, b.x + b.w / 2, b.y + b.h / 2 + (k - (lines.length - 1) / 2) * lh));
       vctx.textAlign = 'left';
     }
     if (p.present && p.lms) {
@@ -695,9 +726,9 @@ function drawGraph(p, now) {
 
 function updatePanels() {
   players.forEach(p => {
-    p.el.seen.textContent = p.present ? '● 인식 중' : '● 인식 안 됨';
-    p.el.seen.classList.toggle('on', p.present);
-    const walking = p.present && p.walkBlock && (p.moving || p.alt.active || p.bob.active);
+    p.el.seen.textContent = { none: '● 인식 안 됨', body: '● 전신이 안 보여요', warm: '● 준비 중', ok: '● 인식 중' }[p.state];
+    p.el.seen.classList.toggle('on', p.state === 'ok');
+    const walking = p.state === 'ok' && p.walkBlock && (p.moving || p.alt.active || p.bob.active);
     p.el.mode.textContent = walking ? (p.moving ? '🚶 이동 중' : '🚶 걷기') : p.primary === 'alt' ? '번갈아뛰기' : '모아뛰기';
     p.el.mode.classList.toggle('alt', !walking && p.primary === 'alt');
     p.el.mode.classList.toggle('walk', walking);
