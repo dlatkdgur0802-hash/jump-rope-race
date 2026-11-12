@@ -119,6 +119,7 @@
   <label class="chk" title="걸어 다니거나 제자리걸음일 때는 세지 않아요"><input type="checkbox" id="chkWalk" checked>걷기 거르기</label>
   <label class="chk" title="손으로 줄을 돌리고 있을 때만 세요"><input type="checkbox" id="chkRope" checked>줄 돌리기 확인</label>
   <button id="btnTest">⏱ 30초 측정</button>
+  <button id="btnRec" title="관절 위치(좌표 숫자만, 영상 아님)를 20초 동안 파일로 저장해요">📼 기록</button>
   <button id="btnFull">⛶</button>
   <span id="status">대기 중</span>
 </header>
@@ -174,13 +175,20 @@ const MOVE_DX = 0.25;      // 그 사이 엉덩이가 몸통 길이의 25% 넘�
 const MOVE_DS = 0.1;       // 몸 크기가 10% 넘게 변하면 앞뒤 이동
 const MOVE_HOLD = 0.8;     // 멈춘 뒤 이만큼은 계속 이동 중으로 봄
 // 디딘 발 확인 (A): 번갈아뛰기는 땅을 딛고 있던 발도 매번 살짝 뜸. 무릎만 들면 디딘 발은 바닥에 붙어 있음
-const FOOT_K = 0.5;        // 디딘 발이 감도 기준의 50% 이상 떠야 번갈아뛰기 1회로 인정
+//  → 실제 카메라에서는 뜨는 높이(1~3cm)가 잡음과 비슷해 구분이 안 됨. 수치만 표시하고 세기에는 쓰지 않음
+const USE_FOOT_GATE = false;
+const FOOT_K = 0.5;        // (USE_FOOT_GATE일 때) 디딘 발이 감도 기준의 50% 이상 떠야 번갈아뛰기 1회로 인정
+// 올라간 발 확인: 번갈아뛰기 1회로 셀 때, 올라갔다고 판단한 그 발이 실제로 자기 바닥보다 떠 있어야 함
+//  → 한 발만 들었다 내리면 다른 발은 안 떴으니 두 번 세지 않음
+const UP_FOOT_K = 0.35;     // 올라간 발이 번갈아뛰기 감도 기준의 35% 이상 떠야 인정
+const UP_FOOT_WIN = 0.4;   // 직전 0.4초 안에 떴는지 봄
 const FOOT_FLOOR_WIN = 2;  // 최근 2초 동안 발이 가장 낮았던 곳을 바닥으로 봄
 const FOOT_STEP_WIN = 0.5; // 한 걸음(직전 0.5초) 안에 디딘 발이 떴는지 봄
 const FOOT_FLOOR_Q = 1;    // 바닥 = 최근 2초 중 발이 가장 낮았던 곳 (1 = 최저점)
 // 줄 돌리기 확인 (C): 줄을 돌리면 손목이 엉덩이 기준으로 계속 원을 그림
 const HAND_MIN = 0.08;     // 손목 움직임 크기(몸통 길이 대비)가 이보다 작으면 줄을 안 돌리는 것으로 봄
 const HAND_WIN = 1.2;      // 손 움직임을 보는 구간(초)
+const HAND_CORR = 0.2;     // 양손 위아래 움직임이 같은 방향인 정도(-1~1). 줄 돌리기는 +, 팔 흔들기는 −
 // 세기 조건
 const BODY_PTS = [0, 11, 12, 23, 24, 27, 28]; // 코·어깨·엉덩이·발목이 다 보여야 함
 const BOX_X = [[0.03, 0.485], [0.515, 0.97]]; // 화면(거울 적용) 기준 빨강/파랑 박스 가로 범위
@@ -247,7 +255,8 @@ class Player {
   reset() {
     this.bob.reset(); this.alt.reset(); this.ub.reset();
     this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false;
-    this.gfBuf = []; this.gfSm = null; this.footLift = null; this.hBuf = []; this.handAmp = null; this.block = '';
+    this.gfBuf = []; this.gfSm = null; this.footLift = null; this.hBuf = []; this.handAmp = null; this.handCorr = null; this.block = '';
+    this.fBuf = []; this.fSm = [null, null];
     this.count = 0; this.jumpTimes = []; this.events = []; this.lastJumpT = -99; this.lastRawT = -99; this.primary = 'bob';
     this.bases = {}; this.scale = null; this.lastT = null;
     this.present = false; this.lastSeen = -99; this.lms = null;
@@ -255,7 +264,7 @@ class Player {
     this.rate = 0; this.peak = 0; this.flash = 0;
   }
   resetCount() { this.count = 0; this.jumpTimes = []; this.events = []; this.peak = 0; this.lastJumpT = -99; }
-  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); this.ub.reset(); this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false; this.gfBuf = []; this.gfSm = null; this.footLift = null; this.hBuf = []; this.handAmp = null; this.block = ''; this.okSince = null; this.badSince = null; this.state = 'none'; }
+  clearTracking() { this.bases = {}; this.scale = null; this.lastT = null; this.lms = null; this.bob.reset(); this.alt.reset(); this.ub.reset(); this.trk = []; this.moveUntil = -99; this.moving = false; this.walkBlock = false; this.gfBuf = []; this.gfSm = null; this.footLift = null; this.hBuf = []; this.handAmp = null; this.handCorr = null; this.block = ''; this.fBuf = []; this.fSm = [null, null]; this.okSince = null; this.badSince = null; this.state = 'none'; }
   get minAmp() { return 0.0872 - this.sens * 0.0072; } // 몸통 길이 대비 (감도 1=0.08, 6=0.044, 10=0.015)
   get minAmpAlt() { return this.minAmp * 1.6; }
 
@@ -319,6 +328,23 @@ class Player {
       evA = this.alt.feed(t, d, dt, this.minAmpAlt, true);
     }
 
+    // 2-1) 발별 높이: 왼발(27)·오른발(28) 각각 자기 바닥(최근 2초 최저점)에서 얼마나 떴는지
+    let upLift = null; // [왼발, 오른발] 직전 UP_FOOT_WIN초 동안 가장 높이 뜬 값
+    if (ok(lms[27]) && ok(lms[28])) {
+      const yy = [lms[27].y, lms[28].y].map(y => y * vh / this.scale);
+      this.fSm = this.fSm.map((v, k) => v == null ? yy[k] : v + 0.6 * (yy[k] - v));
+      this.fBuf.push({ t, v: this.fSm.slice() });
+    }
+    while (this.fBuf.length && this.fBuf[0].t < t - FOOT_FLOOR_WIN) this.fBuf.shift();
+    if (this.fBuf.length >= 5 && t - this.fBuf[0].t > 0.8) {
+      upLift = [0, 1].map(k => {
+        let floor = -Infinity, up = 0;
+        for (const e of this.fBuf) floor = Math.max(floor, e.v[k]);
+        for (const e of this.fBuf) if (e.t > t - UP_FOOT_WIN) up = Math.max(up, floor - e.v[k]);
+        return up;
+      });
+    }
+
     // 2-2) 디딘 발 높이: 두 발목 중 더 낮은 쪽이 바닥에서 얼마나 떴는지
     let stepLift = null;
     if (ok(lms[27]) && ok(lms[28])) {
@@ -354,6 +380,14 @@ class Player {
       return 2 * Math.sqrt(v); // 원을 그리면 지름과 비슷한 값
     }).filter(a => a != null);
     this.handAmp = amps.length ? amps.reduce((a, c) => a + c, 0) / amps.length : null; // 손이 안 보이면 판단 안 함
+    // 양손이 같은 방향으로 움직이는지: 줄을 돌리면 두 손이 함께 위아래로, 팔을 흔들면 서로 반대로 움직임
+    const both = this.hBuf.filter(e => e.wr[0] && e.wr[1]);
+    if (both.length >= 8) {
+      const ma = both.reduce((a, e) => a + e.wr[0].y, 0) / both.length, mb = both.reduce((a, e) => a + e.wr[1].y, 0) / both.length;
+      let sab = 0, saa = 0, sbb = 0;
+      for (const e of both) { const a = e.wr[0].y - ma, b = e.wr[1].y - mb; sab += a * b; saa += a * a; sbb += b * b; }
+      this.handCorr = saa && sbb ? sab / Math.sqrt(saa * sbb) : 0;
+    } else this.handCorr = null; // 한 손만 보이면 방향은 판단 안 함
 
     // 3) 더 뚜렷한 쪽을 주 신호로 (자주 바뀌지 않게 1.3배 차이 필요)
     const sb = this.bob.active ? this.bob.amp / this.minAmp : 0;
@@ -369,10 +403,15 @@ class Player {
     // 사람이 낼 수 없는 속도: 직전 신호(센 것이든 버린 것이든)와 간격이 너무 짧으면 버림
     //  → 계속 떨리는 잡음은 한 번도 세지 않고, 진짜 점프 사이에 낀 헛신호만 걸러짐
     if (evt) { const tooFast = t - this.lastRawT < MIN_IV[this.primary]; this.lastRawT = t; if (tooFast) evt = false; }
-    // A: 번갈아뛰기인데 디딘 발이 안 떴으면(무릎만 들기) 세지 않음
-    const footLow = filterWalk && this.primary === 'alt' && stepLift != null && stepLift < this.minAmp * FOOT_K;
-    // C: 손으로 줄을 돌리지 않으면 세지 않음
-    const noRope = checkRope && this.handAmp != null && this.handAmp < HAND_MIN;
+    // 번갈아뛰기: 올라갔다고 본 발이 실제로 떴는지 (alt.state 1 = 오른발이 더 높음, -1 = 왼발이 더 높음)
+    if (evt && this.primary === 'alt' && upLift) {
+      const foot = this.alt.state === 1 ? 1 : 0;
+      if (upLift[foot] < this.minAmpAlt * UP_FOOT_K) evt = false;
+    }
+    // A: 번갈아뛰기인데 디딘 발이 안 떴으면(무릎만 들기) 세지 않음 — 현재 꺼 둠
+    const footLow = USE_FOOT_GATE && filterWalk && this.primary === 'alt' && stepLift != null && stepLift < this.minAmp * FOOT_K;
+    // C: 손으로 줄을 돌리지 않으면 세지 않음 (손이 거의 안 움직이거나, 양손이 반대로 흔들리면 = 팔 흔들기)
+    const noRope = checkRope && ((this.handAmp != null && this.handAmp < HAND_MIN) || (this.handCorr != null && this.handCorr < HAND_CORR));
     if (footLow || noRope) evt = false;
     const busy = this.channel.active;
     this.block = !busy ? '' : this.walkBlock ? (this.moving ? 'move' : 'walk') : footLow ? 'foot' : noRope ? 'rope' : '';
@@ -450,7 +489,7 @@ players.forEach((p, i) => {
       <div class="count"><span class="cnt">0</span><small> 회</small></div>
       <div class="stat">속도 <b class="jpm">0</b> 회/분 · 최고 <b class="pk">0</b></div>
       <div class="stat">몸 <b class="ampB">0.00</b>/<b class="minB">0.00</b> · 발 <b class="ampA">0.00</b>/<b class="minA">0.00</b> · <span style="white-space:nowrap">상체 <b class="ampU">0.00</b>/<b class="minU">0.00</b></span></div>
-      <div class="stat">디딘 발 <b class="ampF">-</b>/<b class="minF">0.00</b> · 손 <b class="ampH">-</b>/<b class="minH">0.00</b></div>
+      <div class="stat">디딘 발 <b class="ampF">-</b> · 손 <b class="ampH">-</b>/<b class="minH">0.00</b> · 양손 <b class="corH">-</b>/<b class="minC">0.0</b></div>
       <div class="ctrl">
         <select class="grade"><option value="12">1~2학년</option><option value="34" selected>3~4학년</option><option value="56">5~6학년</option></select>
         감도 <input type="range" class="sens" min="1" max="10" step="1" value="6"><span class="sv">6</span>
@@ -462,7 +501,7 @@ players.forEach((p, i) => {
   const q = s => el.querySelector(s);
   p.el = {
     seen: q('.seen'), mode: q('.mode'), cnt: q('.cnt'), jpm: q('.jpm'), pk: q('.pk'),
-    ampB: q('.ampB'), minB: q('.minB'), ampA: q('.ampA'), minA: q('.minA'), ampU: q('.ampU'), minU: q('.minU'), ampF: q('.ampF'), minF: q('.minF'), ampH: q('.ampH'), minH: q('.minH'),
+    ampB: q('.ampB'), minB: q('.minB'), ampA: q('.ampA'), minA: q('.minA'), ampU: q('.ampU'), minU: q('.minU'), ampF: q('.ampF'), ampH: q('.ampH'), minH: q('.minH'), corH: q('.corH'), minC: q('.minC'),
     sens: q('.sens'), sv: q('.sv'), graph: q('.graph'),
   };
   const setSens = v => { p.sens = +v; p.el.sens.value = v; p.el.sv.textContent = v; };
@@ -793,7 +832,8 @@ function updatePanels() {
     p.el.pk.textContent = Math.round(p.peak);
     p.el.ampB.textContent = p.bob.amp.toFixed(2); p.el.minB.textContent = p.minAmp.toFixed(2);
     p.el.ampA.textContent = p.alt.amp.toFixed(2); p.el.minA.textContent = p.minAmpAlt.toFixed(2);
-    p.el.ampF.textContent = p.footLift == null ? '-' : p.footLift.toFixed(2); p.el.minF.textContent = (p.minAmp * FOOT_K).toFixed(2);
+    p.el.ampF.textContent = p.footLift == null ? '-' : p.footLift.toFixed(2);
+    p.el.corH.textContent = p.handCorr == null ? '-' : p.handCorr.toFixed(1); p.el.minC.textContent = HAND_CORR.toFixed(1);
     p.el.ampH.textContent = p.handAmp == null ? '-' : p.handAmp.toFixed(2); p.el.minH.textContent = HAND_MIN.toFixed(2);
     p.el.ampU.textContent = p.ub.amp.toFixed(2); p.el.minU.textContent = (p.minAmp * UB_K).toFixed(2);
   });
@@ -812,10 +852,52 @@ function assign(poses, t) {
     const side = p.side ?? (dx < 0.5 ? 0 : 1);
     cand[side].push({ lms: l, d: Math.abs(dx - (side ? 0.745 : 0.255)) });
   }
+  const recRow = rec ? { t: +(t - rec.start).toFixed(3), p: [] } : null;
   players.forEach((p, i) => {
-    if (cand[i].length) { cand[i].sort((a, b) => a.d - b.d); p.feed(t, cand[i][0].lms, vw, vh); }
-    else p.miss(t);
+    if (cand[i].length) {
+      cand[i].sort((a, b) => a.d - b.d); p.feed(t, cand[i][0].lms, vw, vh);
+      if (recRow) recRow.p[i] = { c: p.count, l: cand[i][0].lms.map(l => [+l.x.toFixed(4), +l.y.toFixed(4), +(l.visibility ?? 0).toFixed(2)]) };
+    } else { p.miss(t); if (recRow) recRow.p[i] = { c: p.count, l: null }; }
   });
+  if (recRow) rec.frames.push(recRow);
+}
+
+// ───────────────────────── 기록 (실제 데이터로 기준값을 맞추기 위한 좌표 저장) ─────────────────────────
+const REC_SEC = 20;
+let rec = null;
+$('#btnRec').onclick = () => {
+  if (rec) return finishRec();
+  if (!running || !engine) { alert('카메라를 켜고 인식이 시작된 뒤에 눌러 주세요.'); return; }
+  const label = prompt('어떤 동작을 기록할까요?\n(예: 번갈아뛰기, 모아뛰기, 무릎 들기, 한 발 들기)', '번갈아뛰기');
+  if (label === null) return;
+  rec = {
+    label: label.trim() || '기록', start: performance.now() / 1000, frames: [],
+    meta: {
+      version: 1, date: new Date().toISOString(), vw: video.videoWidth, vh: video.videoHeight,
+      mirror: $('#chkMirror').checked, engine: engineKind, model: $('#selModel').value, delegate: engine?.delegate,
+      filterWalk, checkRope, sens: players.map(p => p.sens), ua: navigator.userAgent,
+    },
+  };
+};
+function finishRec() {
+  const r = rec; rec = null; $('#btnRec').textContent = '📼 기록';
+  if (!r || !r.frames.length) return;
+  r.meta.seconds = +(r.frames[r.frames.length - 1].t).toFixed(1);
+  r.meta.fps = +(r.frames.length / Math.max(0.1, r.meta.seconds)).toFixed(1);
+  const d = new Date(), pad = n => String(n).padStart(2, '0');
+  // 파일 이름은 영어로 (한글 이름은 일부 기기에서 'download'로 바뀜). 동작 이름은 파일 안 label에 그대로 저장됨
+  const slug = [['번갈아', 'alt'], ['모아', 'both'], ['무릎', 'knee'], ['한 발', 'onefoot'], ['한발', 'onefoot'], ['걷', 'walk']]
+    .find(([k]) => r.label.includes(k))?.[1] || (r.label.replace(/[^A-Za-z0-9]+/g, '') || 'rec');
+  const name = `jumprope_${slug}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.json`;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(r)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function updateRec(t) {
+  if (!rec) return;
+  const left = REC_SEC - (t - rec.start);
+  if (left <= 0) finishRec();
+  else $('#btnRec').textContent = `⏹ 기록 중 ${Math.ceil(left)}`;
 }
 
 function loop() {
@@ -837,6 +919,7 @@ function loop() {
     if (engine && running && !loading) statusEl.textContent = `엔진${ENGINE_NAMES[engineKind]} · ${engine.delegate} · 인식 ${inferMs.toFixed(0)}ms · ${fps.toFixed(0)} FPS`;
   }
   updateTest(t);
+  updateRec(t);
   drawView();
   if (t - uiT > 0.066) { // 화면 표시 갱신은 초당 15번이면 충분
     uiT = t;
